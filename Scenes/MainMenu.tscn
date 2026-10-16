@@ -1,0 +1,258 @@
+[gd_scene format=3 uid="uid://ce5wbktu5lk3y"]
+
+[ext_resource type="Shader" uid="uid://bbdvc1s8thhwx" path="res://Shaders/inverse.gdshader" id="1_8saeu"]
+[ext_resource type="Texture2D" uid="uid://dugaravil6tpn" path="res://Sprites/logo.png" id="2_ghw46"]
+[ext_resource type="Texture2D" uid="uid://dw5u45roadeb7" path="res://Sprites/logo_outline.png" id="3_df05h"]
+[ext_resource type="Shader" uid="uid://ddb8xl7fkrmnm" path="res://Shaders/Transition.gdshader" id="4_ghw46"]
+[ext_resource type="Texture2D" uid="uid://boltmrnbutdo1" path="res://Sprites/TransitionBox.png" id="5_df05h"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_u5e82"]
+shader = ExtResource("1_8saeu")
+shader_parameter/cutoff = 0.5
+
+[sub_resource type="Animation" id="Animation_dd4i7"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Enterance/Icon:visible")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [false]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Enterance/Icon/Diamond:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(1.6, 1.6)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Enterance/Icon:material:shader_parameter/cutoff")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.5]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Enterance/Icon/Diamond:visible")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [true]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Enterance/Icon:scale")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(1, 1)]
+}
+
+[sub_resource type="Animation" id="Animation_t537q"]
+resource_name = "start"
+length = 3.5
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Enterance/Icon:visible")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.26666668),
+"transitions": PackedFloat32Array(1, 1),
+"update": 1,
+"values": [false, true]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Enterance/Icon/Diamond:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.26666668, 0.73333335, 1),
+"transitions": PackedFloat32Array(1, 0.2871746, 0.65975386, 0.65975386),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, 0), Vector2(1.4, 1.4), Vector2(1, 1)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Enterance/Icon:material:shader_parameter/cutoff")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 1.1, 2),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 0.0, 0.5]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Enterance/Icon/Diamond:visible")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(),
+"transitions": PackedFloat32Array(),
+"update": 1,
+"values": []
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Enterance/Icon:scale")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0, 2.5007272, 2.6116807),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Vector2(1, 1), Vector2(1, 1), Vector2(0, 0)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_dd4i7"]
+_data = {
+&"RESET": SubResource("Animation_dd4i7"),
+&"start": SubResource("Animation_t537q")
+}
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_8saeu"]
+shader = ExtResource("4_ghw46")
+shader_parameter/mask = ExtResource("5_df05h")
+shader_parameter/scale = 1.0
+shader_parameter/rotation_degrees = 0.0
+
+[sub_resource type="Animation" id="Animation_df05h"]
+resource_name = "Fade"
+length = 1.2666667
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:material:shader_parameter/scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1.2666667),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [1.0, 0.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath(".:material:shader_parameter/rotation_degrees")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 1.2666667),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [0.0, 85.00000663103401]
+}
+
+[sub_resource type="Animation" id="Animation_8um5k"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:material:shader_parameter/scale")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [1.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath(".:material:shader_parameter/rotation_degrees")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_8um5k"]
+_data = {
+&"Fade": SubResource("Animation_df05h"),
+&"RESET": SubResource("Animation_8um5k")
+}
+
+[node name="MainMenu" type="Control" unique_id=693147775]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Enterance" type="Node2D" parent="." unique_id=381666237]
+visible = false
+
+[node name="ColorRect" type="ColorRect" parent="Enterance" unique_id=1024688302]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 1)
+
+[node name="Icon" type="Sprite2D" parent="Enterance" unique_id=905829825]
+visible = false
+material = SubResource("ShaderMaterial_u5e82")
+position = Vector2(956, 556)
+texture = ExtResource("2_ghw46")
+
+[node name="Diamond" type="Sprite2D" parent="Enterance/Icon" unique_id=1216626930]
+position = Vector2(0.99999994, 0.99999994)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("3_df05h")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Enterance" unique_id=2140329929]
+root_node = NodePath("../..")
+libraries/ = SubResource("AnimationLibrary_dd4i7")
+
+[node name="TransitionScreen" type="ColorRect" parent="." unique_id=348144943]
+material = SubResource("ShaderMaterial_8saeu")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 1)
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="TransitionScreen" unique_id=1598356127]
+libraries/ = SubResource("AnimationLibrary_8um5k")

@@ -1,10 +1,24 @@
-[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+[gd_resource type="ShaderMaterial" format=3 uid="uid://b0h61c80061g4"]
 
-[ext_resource type="Shader" path="res://addons/weather_fx_2d_lite/shaders/lightning_flash.gdshader" id="1"]
+[ext_resource type="Shader" uid="uid://bjo8m1tmn1bh" path="res://addons/weather_fx_2d_lite/shaders/lightning_flash.gdshader" id="1"]
 
 [resource]
 shader = ExtResource("1")
 shader_parameter/progress = 0.0
+shader_parameter/loop_interval = 0.0
+shader_parameter/flash_duration = 1.0
+shader_parameter/time_offset = 0.0
+shader_parameter/aspect = 1.7778
+shader_parameter/seed = 1.0
 shader_parameter/intensity = 1.0
+shader_parameter/alpha_mult = 1.0
+shader_parameter/wind = 0.0
+shader_parameter/show_bolt = true
+shader_parameter/randomize_position = true
 shader_parameter/bolt_x = 0.5
+shader_parameter/bolt_width = 0.01
+shader_parameter/branches = 1.0
+shader_parameter/bolt_color = Color(0.93, 0.96, 1, 1)
+shader_parameter/glow_color = Color(0.45, 0.6, 1, 1)
 shader_parameter/screen_flash = 0.45
+shader_parameter/flash_color = Color(0.8, 0.87, 1, 1)

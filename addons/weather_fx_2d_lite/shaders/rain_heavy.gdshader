@@ -13,7 +13,7 @@ uniform float time_offset = 0.0;
 uniform float seed = 0.0;
 uniform float intensity : hint_range(0.0, 1.0) = 0.8;
 uniform float alpha_mult : hint_range(0.0, 2.0) = 1.0;
-uniform float wind : hint_range(-1.0, 1.0) = 0.4;
+uniform float wind : hint_range(-1.0, 1.0) = -0.4;
 uniform int layers : hint_range(1, 4) = 4;
 
 group_uniforms look;
