@@ -5,6 +5,13 @@
 [ext_resource type="Texture2D" uid="uid://dw5u45roadeb7" path="res://Sprites/logo_outline.png" id="3_df05h"]
 [ext_resource type="Shader" uid="uid://ddb8xl7fkrmnm" path="res://Shaders/Transition.gdshader" id="4_ghw46"]
 [ext_resource type="Texture2D" uid="uid://boltmrnbutdo1" path="res://Sprites/TransitionBox.png" id="5_df05h"]
+[ext_resource type="Script" uid="uid://cdjbxsjod1x17" path="res://Scripts/main_menu.gd" id="6_menu"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_df05h"]
+shader = ExtResource("4_ghw46")
+shader_parameter/mask = ExtResource("5_df05h")
+shader_parameter/scale = 0.0
+shader_parameter/rotation_degrees = 75.000006482022
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_u5e82"]
 shader = ExtResource("1_8saeu")
@@ -15,7 +22,7 @@ length = 0.001
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
-tracks/0/path = NodePath("Enterance/Icon:visible")
+tracks/0/path = NodePath("Entrance/Icon:visible")
 tracks/0/interp = 1
 tracks/0/loop_wrap = true
 tracks/0/keys = {
@@ -27,7 +34,7 @@ tracks/0/keys = {
 tracks/1/type = "value"
 tracks/1/imported = false
 tracks/1/enabled = true
-tracks/1/path = NodePath("Enterance/Icon/Diamond:scale")
+tracks/1/path = NodePath("Entrance/Icon/Diamond:scale")
 tracks/1/interp = 1
 tracks/1/loop_wrap = true
 tracks/1/keys = {
@@ -39,7 +46,7 @@ tracks/1/keys = {
 tracks/2/type = "value"
 tracks/2/imported = false
 tracks/2/enabled = true
-tracks/2/path = NodePath("Enterance/Icon:material:shader_parameter/cutoff")
+tracks/2/path = NodePath("Entrance/Icon:material:shader_parameter/cutoff")
 tracks/2/interp = 1
 tracks/2/loop_wrap = true
 tracks/2/keys = {
@@ -51,7 +58,7 @@ tracks/2/keys = {
 tracks/3/type = "value"
 tracks/3/imported = false
 tracks/3/enabled = true
-tracks/3/path = NodePath("Enterance/Icon/Diamond:visible")
+tracks/3/path = NodePath("Entrance/Icon/Diamond:visible")
 tracks/3/interp = 1
 tracks/3/loop_wrap = true
 tracks/3/keys = {
@@ -63,7 +70,7 @@ tracks/3/keys = {
 tracks/4/type = "value"
 tracks/4/imported = false
 tracks/4/enabled = true
-tracks/4/path = NodePath("Enterance/Icon:scale")
+tracks/4/path = NodePath("Entrance/Icon:scale")
 tracks/4/interp = 1
 tracks/4/loop_wrap = true
 tracks/4/keys = {
@@ -72,14 +79,38 @@ tracks/4/keys = {
 "update": 0,
 "values": [Vector2(1, 1)]
 }
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Entrance:material:shader_parameter/scale")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+tracks/6/type = "value"
+tracks/6/imported = false
+tracks/6/enabled = true
+tracks/6/path = NodePath("Entrance:material:shader_parameter/rotation_degrees")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [75.000006482022]
+}
 
 [sub_resource type="Animation" id="Animation_t537q"]
 resource_name = "start"
-length = 3.5
+length = 3.3333333
 tracks/0/type = "value"
 tracks/0/imported = false
 tracks/0/enabled = true
-tracks/0/path = NodePath("Enterance/Icon:visible")
+tracks/0/path = NodePath("Entrance/Icon:visible")
 tracks/0/interp = 1
 tracks/0/loop_wrap = true
 tracks/0/keys = {
@@ -91,11 +122,11 @@ tracks/0/keys = {
 tracks/1/type = "value"
 tracks/1/imported = false
 tracks/1/enabled = true
-tracks/1/path = NodePath("Enterance/Icon/Diamond:scale")
+tracks/1/path = NodePath("Entrance/Icon/Diamond:scale")
 tracks/1/interp = 1
 tracks/1/loop_wrap = true
 tracks/1/keys = {
-"times": PackedFloat32Array(0, 0.26666668, 0.73333335, 1),
+"times": PackedFloat32Array(0, 0.26666668, 0.73333335, 0.93333334),
 "transitions": PackedFloat32Array(1, 0.2871746, 0.65975386, 0.65975386),
 "update": 0,
 "values": [Vector2(0, 0), Vector2(0, 0), Vector2(1.4, 1.4), Vector2(1, 1)]
@@ -103,7 +134,7 @@ tracks/1/keys = {
 tracks/2/type = "value"
 tracks/2/imported = false
 tracks/2/enabled = true
-tracks/2/path = NodePath("Enterance/Icon:material:shader_parameter/cutoff")
+tracks/2/path = NodePath("Entrance/Icon:material:shader_parameter/cutoff")
 tracks/2/interp = 1
 tracks/2/loop_wrap = true
 tracks/2/keys = {
@@ -115,7 +146,7 @@ tracks/2/keys = {
 tracks/3/type = "value"
 tracks/3/imported = false
 tracks/3/enabled = true
-tracks/3/path = NodePath("Enterance/Icon/Diamond:visible")
+tracks/3/path = NodePath("Entrance/Icon/Diamond:visible")
 tracks/3/interp = 1
 tracks/3/loop_wrap = true
 tracks/3/keys = {
@@ -127,87 +158,44 @@ tracks/3/keys = {
 tracks/4/type = "value"
 tracks/4/imported = false
 tracks/4/enabled = true
-tracks/4/path = NodePath("Enterance/Icon:scale")
+tracks/4/path = NodePath("Entrance/Icon:scale")
 tracks/4/interp = 1
 tracks/4/loop_wrap = true
 tracks/4/keys = {
-"times": PackedFloat32Array(0, 2.5007272, 2.6116807),
+"times": PackedFloat32Array(0, 3.1890464, 3.3),
 "transitions": PackedFloat32Array(1, 1, 1),
 "update": 0,
-"values": [Vector2(1, 1), Vector2(1, 1), Vector2(0, 0)]
+"values": [Vector2(2, 2), Vector2(2, 2), Vector2(0, 0)]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Entrance:material:shader_parameter/scale")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0, 3.4883192),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [1.0, 1.0]
+}
+tracks/6/type = "value"
+tracks/6/imported = false
+tracks/6/enabled = true
+tracks/6/path = NodePath("Entrance:material:shader_parameter/rotation_degrees")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = {
+"times": PackedFloat32Array(0, 3.4883192),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [0.0, 0.0]
 }
 
 [sub_resource type="AnimationLibrary" id="AnimationLibrary_dd4i7"]
 _data = {
 &"RESET": SubResource("Animation_dd4i7"),
 &"start": SubResource("Animation_t537q")
-}
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_8saeu"]
-shader = ExtResource("4_ghw46")
-shader_parameter/mask = ExtResource("5_df05h")
-shader_parameter/scale = 1.0
-shader_parameter/rotation_degrees = 0.0
-
-[sub_resource type="Animation" id="Animation_df05h"]
-resource_name = "Fade"
-length = 1.2666667
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath(".:material:shader_parameter/scale")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0, 1.2666667),
-"transitions": PackedFloat32Array(1, 1),
-"update": 0,
-"values": [1.0, 0.0]
-}
-tracks/1/type = "value"
-tracks/1/imported = false
-tracks/1/enabled = true
-tracks/1/path = NodePath(".:material:shader_parameter/rotation_degrees")
-tracks/1/interp = 1
-tracks/1/loop_wrap = true
-tracks/1/keys = {
-"times": PackedFloat32Array(0, 1.2666667),
-"transitions": PackedFloat32Array(1, 1),
-"update": 0,
-"values": [0.0, 85.00000663103401]
-}
-
-[sub_resource type="Animation" id="Animation_8um5k"]
-length = 0.001
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath(".:material:shader_parameter/scale")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 0,
-"values": [1.0]
-}
-tracks/1/type = "value"
-tracks/1/imported = false
-tracks/1/enabled = true
-tracks/1/path = NodePath(".:material:shader_parameter/rotation_degrees")
-tracks/1/interp = 1
-tracks/1/loop_wrap = true
-tracks/1/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 0,
-"values": [0.0]
-}
-
-[sub_resource type="AnimationLibrary" id="AnimationLibrary_8um5k"]
-_data = {
-&"Fade": SubResource("Animation_df05h"),
-&"RESET": SubResource("Animation_8um5k")
 }
 
 [node name="MainMenu" type="Control" unique_id=693147775]
@@ -217,35 +205,58 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("6_menu")
 
-[node name="Enterance" type="Node2D" parent="." unique_id=381666237]
-visible = false
-
-[node name="ColorRect" type="ColorRect" parent="Enterance" unique_id=1024688302]
+[node name="MenuItems" type="Control" parent="." unique_id=1117130774]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 1)
 
-[node name="Icon" type="Sprite2D" parent="Enterance" unique_id=905829825]
+[node name="ColorRect" type="ColorRect" parent="MenuItems" unique_id=1853836862]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.3372549, 0.74509805, 1, 1)
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MenuItems" unique_id=989386122]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.030000001
+anchor_top = 0.711
+anchor_right = 0.23400001
+anchor_bottom = 0.95900005
+offset_left = 0.3999977
+offset_top = 0.11999512
+offset_right = -0.2800293
+offset_bottom = 0.27990723
+grow_vertical = 0
+theme_override_constants/separation = 16
+
+[node name="StartButton" type="Button" parent="MenuItems/VBoxContainer" unique_id=397700734]
+custom_minimum_size = Vector2(0, 75)
+layout_mode = 2
+text = "Start"
+
+[node name="OptionButton" type="Button" parent="MenuItems/VBoxContainer" unique_id=694607256]
+custom_minimum_size = Vector2(0, 75)
+layout_mode = 2
+text = "Options"
+
+[node name="ExitButton" type="Button" parent="MenuItems/VBoxContainer" unique_id=1334814249]
+custom_minimum_size = Vector2(0, 75)
+layout_mode = 2
+text = "Exit"
+
+[node name="Entrance" type="ColorRect" parent="." unique_id=1024688302]
 visible = false
-material = SubResource("ShaderMaterial_u5e82")
-position = Vector2(956, 556)
-texture = ExtResource("2_ghw46")
-
-[node name="Diamond" type="Sprite2D" parent="Enterance/Icon" unique_id=1216626930]
-position = Vector2(0.99999994, 0.99999994)
-scale = Vector2(1.6, 1.6)
-texture = ExtResource("3_df05h")
-
-[node name="AnimationPlayer" type="AnimationPlayer" parent="Enterance" unique_id=2140329929]
-root_node = NodePath("../..")
-libraries/ = SubResource("AnimationLibrary_dd4i7")
-
-[node name="TransitionScreen" type="ColorRect" parent="." unique_id=348144943]
-material = SubResource("ShaderMaterial_8saeu")
+material = SubResource("ShaderMaterial_df05h")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -254,5 +265,18 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 1)
 
-[node name="AnimationPlayer" type="AnimationPlayer" parent="TransitionScreen" unique_id=1598356127]
-libraries/ = SubResource("AnimationLibrary_8um5k")
+[node name="Icon" type="Sprite2D" parent="Entrance" unique_id=905829825]
+visible = false
+material = SubResource("ShaderMaterial_u5e82")
+position = Vector2(960, 540)
+texture = ExtResource("2_ghw46")
+
+[node name="Diamond" type="Sprite2D" parent="Entrance/Icon" unique_id=1216626930]
+position = Vector2(0.99999994, 0.99999994)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("3_df05h")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Entrance" unique_id=2140329929]
+root_node = NodePath("../..")
+libraries/ = SubResource("AnimationLibrary_dd4i7")
+autoplay = &"RESET"

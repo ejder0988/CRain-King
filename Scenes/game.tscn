@@ -9,8 +9,11 @@
 [ext_resource type="Texture2D" uid="uid://b64cuxra8hkyr" path="res://Sprites/beacon_turn_1.png" id="7_bturn1"]
 [ext_resource type="Texture2D" uid="uid://wiij823axt2k" path="res://Sprites/beacon_turn_2.png" id="8_bturn2"]
 [ext_resource type="Texture2D" uid="uid://bs5sgxhqc486a" path="res://Sprites/beacon_turn_3.png" id="9_bturn3"]
-[ext_resource type="Texture2D" uid="uid://dw2m3uanwqno7" path="res://Sprites/crane_hook.png" id="10_hook"]
+[ext_resource type="Texture2D" uid="uid://dsjuko3h5l668" path="res://Sprites/Crane/crane_part.png" id="10_rku1e"]
+[ext_resource type="Shader" uid="uid://bdyxgi7lrtr1i" path="res://Shaders/outline.gdshader" id="11_1phco"]
+[ext_resource type="Texture2D" uid="uid://c1oscof7u4a3h" path="res://Sprites/Crane/crane_bucket.png" id="11_rku1e"]
 [ext_resource type="PackedScene" uid="uid://ds7wan56d10w4" path="res://Scenes/weather_system.tscn" id="11_weather"]
+[ext_resource type="Texture2D" uid="uid://cy3j8tdfsjg1e" path="res://Sprites/Crane/Arrow.png" id="12_1phco"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(3840, 100)
@@ -47,6 +50,148 @@ animations = [{
 "loop": 0,
 "name": &"turn",
 "speed": 6.0
+}]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rfjv2"]
+atlas = ExtResource("10_rku1e")
+region = Rect2(0, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_1phco"]
+atlas = ExtResource("10_rku1e")
+region = Rect2(48, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_nb51f"]
+atlas = ExtResource("10_rku1e")
+region = Rect2(96, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_nnt18"]
+atlas = ExtResource("10_rku1e")
+region = Rect2(144, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ewbju"]
+atlas = ExtResource("10_rku1e")
+region = Rect2(192, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_85qyi"]
+atlas = ExtResource("10_rku1e")
+region = Rect2(240, 0, 48, 48)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_g4v7s"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rfjv2")
+}],
+"loop": 0,
+"name": &"default",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rfjv2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_1phco")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_nb51f")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_nnt18")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ewbju")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_85qyi")
+}],
+"loop": 1,
+"name": &"move",
+"speed": 10.0
+}]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_rfjv2"]
+shader = ExtResource("11_1phco")
+shader_parameter/line_color = Color(0, 0, 0, 1)
+shader_parameter/line_thickness = 1.0
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7nbq1"]
+atlas = ExtResource("11_rku1e")
+region = Rect2(64, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_exi56"]
+atlas = ExtResource("11_rku1e")
+region = Rect2(128, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7t8sx"]
+atlas = ExtResource("11_rku1e")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_iivbl"]
+atlas = ExtResource("11_rku1e")
+region = Rect2(0, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_mg4q0"]
+atlas = ExtResource("11_rku1e")
+region = Rect2(256, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_vm72l"]
+atlas = ExtResource("11_rku1e")
+region = Rect2(320, 0, 64, 64)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_yf5fn"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7nbq1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_exi56")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7t8sx")
+}],
+"loop": 0,
+"name": &"catch",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7t8sx")
+}],
+"loop": 1,
+"name": &"catch_loop",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7nbq1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_exi56")
+}],
+"loop": 0,
+"name": &"catch_start",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_iivbl")
+}],
+"loop": 0,
+"name": &"default",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_mg4q0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_vm72l")
+}],
+"loop": 0,
+"name": &"hold",
+"speed": 5.0
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_hook"]
@@ -86,6 +231,8 @@ color = Color(0.4, 0.42, 0.45, 1)
 [node name="Crane" type="CharacterBody2D" parent="." unique_id=1565022501]
 position = Vector2(991, 1016)
 script = ExtResource("3_crane")
+trolley_speed = 150.0
+rope_winch_speed = 350.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Crane" unique_id=199735291]
 position = Vector2(-28, -20)
@@ -118,19 +265,17 @@ autoplay = "idle"
 [node name="TrolleyPivot" type="Marker2D" parent="Crane" unique_id=1808371074]
 position = Vector2(352, -596)
 
-[node name="TrolleyCart" type="ColorRect" parent="Crane/TrolleyPivot" unique_id=1788064116]
-offset_left = -22.0
-offset_top = -12.0
-offset_right = 22.0
-offset_bottom = 6.0
-color = Color(0.18, 0.2, 0.24, 1)
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Crane/TrolleyPivot" unique_id=1079103842]
+position = Vector2(-1, -5)
+sprite_frames = SubResource("SpriteFrames_g4v7s")
+animation = &"move"
+autoplay = "default"
 
-[node name="TrolleyStripe" type="ColorRect" parent="Crane/TrolleyPivot" unique_id=629101349]
-offset_left = -18.0
-offset_top = -2.0
-offset_right = 18.0
-offset_bottom = 2.0
-color = Color(0.95, 0.75, 0.1, 1)
+[node name="Arrow" type="Sprite2D" parent="Crane/TrolleyPivot" unique_id=1614115501]
+material = SubResource("ShaderMaterial_rfjv2")
+position = Vector2(0, 218.99998)
+scale = Vector2(2.75, 2.75)
+texture = ExtResource("12_1phco")
 
 [node name="Line2D" type="Line2D" parent="Crane" unique_id=909736395]
 width = 3.0
@@ -152,8 +297,9 @@ continuous_cd = 1
 linear_damp = 0.4
 angular_damp = 2.0
 
-[node name="Sprite2D" type="Sprite2D" parent="Crane/Payload" unique_id=1015843731]
-texture = ExtResource("10_hook")
+[node name="PayloadAnimationSprite2d" type="AnimatedSprite2D" parent="Crane/Payload" unique_id=488710238]
+sprite_frames = SubResource("SpriteFrames_yf5fn")
+animation = &"catch_start"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Crane/Payload" unique_id=1812875115]
 shape = SubResource("CapsuleShape2D_hook")
