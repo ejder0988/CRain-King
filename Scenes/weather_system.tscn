@@ -1,0 +1,88 @@
+[gd_scene format=3 uid="uid://ds7wan56d10w4"]
+
+[ext_resource type="Script" uid="uid://bpki6vlap8iu" path="res://Scripts/weather_system.gd" id="1_weather"]
+[ext_resource type="Script" uid="uid://cguyyappqn4l3" path="res://addons/weather_fx_2d_lite/weather_layer_lite.gd" id="2_layer"]
+[ext_resource type="Material" path="res://addons/weather_fx_2d_lite/presets/rain_heavy__night_storm.tres" id="3_rain"]
+[ext_resource type="Material" path="res://addons/weather_fx_2d_lite/presets/lightning_flash__single_strike.tres" id="4_lightning"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hint"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+bg_color = Color(0.06, 0.08, 0.12, 0.75)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.4, 0.6, 0.6)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="WeatherSystem" type="CanvasLayer" unique_id=1743711164]
+layer = 10
+script = ExtResource("1_weather")
+
+[node name="AtmosphereTint" type="ColorRect" parent="." unique_id=429166023]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.07, 0.1, 0.2, 0.6)
+
+[node name="RainLayer" type="ColorRect" parent="." unique_id=165197715]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_layer")
+preset = ExtResource("3_rain")
+
+[node name="LightningLayer" type="ColorRect" parent="." unique_id=1618706672]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_layer")
+preset = ExtResource("4_lightning")
+
+[node name="UI" type="Control" parent="." unique_id=93864675]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="HintBadge" type="PanelContainer" parent="UI" unique_id=331255810]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -280.0
+offset_top = 18.0
+offset_right = 280.0
+offset_bottom = 54.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hint")
+
+[node name="HintLabel" type="Label" parent="UI/HintBadge" unique_id=398373629]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.9, 0.98, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 14
+text = "Weather: Night Storm  |  [1] Downpour  [2] Night Storm  [3] Clear  [L] Lightning"
+horizontal_alignment = 1
+vertical_alignment = 1
