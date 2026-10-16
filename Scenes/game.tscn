@@ -1,0 +1,170 @@
+[gd_scene format=3 uid="uid://dluhjc5wceud7"]
+
+[ext_resource type="Texture2D" uid="uid://bpgqinstsflww" path="res://icon.svg" id="1_ebmjs"]
+[ext_resource type="Texture2D" uid="uid://cvk8ykhw5wgrj" path="res://Sprites/8bit-pixel-art-cityscape-background-600w-2637792829.webp" id="2_qxrlw"]
+[ext_resource type="Script" uid="uid://lw7o5hh6h81i" path="res://Scripts/crane.gd" id="3_crane"]
+[ext_resource type="Texture2D" uid="uid://6xg61sc7wyfu" path="res://Sprites/beacon_idle_0.png" id="4_bidle0"]
+[ext_resource type="Texture2D" uid="uid://cxvm1fa8il0q2" path="res://Sprites/beacon_idle_1.png" id="5_bidle1"]
+[ext_resource type="Texture2D" uid="uid://ibq2plr48iud" path="res://Sprites/beacon_turn_0.png" id="6_bturn0"]
+[ext_resource type="Texture2D" uid="uid://b64cuxra8hkyr" path="res://Sprites/beacon_turn_1.png" id="7_bturn1"]
+[ext_resource type="Texture2D" uid="uid://wiij823axt2k" path="res://Sprites/beacon_turn_2.png" id="8_bturn2"]
+[ext_resource type="Texture2D" uid="uid://bs5sgxhqc486a" path="res://Sprites/beacon_turn_3.png" id="9_bturn3"]
+[ext_resource type="Texture2D" uid="uid://dw2m3uanwqno7" path="res://Sprites/crane_hook.png" id="10_hook"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
+size = Vector2(3840, 100)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_base"]
+size = Vector2(160, 40)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_beacon"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("4_bidle0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_bidle1")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 3.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("6_bturn0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_bturn1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_bturn2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_bturn3")
+}],
+"loop": false,
+"name": &"turn",
+"speed": 6.0
+}]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_hook"]
+radius = 12.0
+height = 46.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_crate"]
+size = Vector2(64, 64)
+
+[node name="game" type="Node2D"]
+
+[node name="background" type="Sprite2D" parent="."]
+position = Vector2(1060, 481)
+scale = Vector2(3.8739493, 3.8739498)
+texture = ExtResource("2_qxrlw")
+
+[node name="Ground" type="StaticBody2D" parent="."]
+position = Vector2(960, 1040)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Ground"]
+shape = SubResource("RectangleShape2D_ground")
+
+[node name="RailColorRect" type="ColorRect" parent="Ground"]
+offset_left = -1920.0
+offset_top = -20.0
+offset_right = 1920.0
+offset_bottom = 20.0
+color = Color(0.12, 0.13, 0.16, 1)
+
+[node name="RailStripe" type="ColorRect" parent="Ground"]
+offset_left = -1920.0
+offset_top = -24.0
+offset_right = 1920.0
+offset_bottom = -20.0
+color = Color(0.4, 0.42, 0.45, 1)
+
+[node name="Crane" type="CharacterBody2D" parent="."]
+position = Vector2(991, 1016)
+script = ExtResource("3_crane")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Crane"]
+position = Vector2(-28, -20)
+shape = SubResource("RectangleShape2D_base")
+
+[node name="Visuals" type="Node2D" parent="Crane"]
+position = Vector2(-28, 0)
+
+[node name="CraneSprite1" type="Sprite2D" parent="Crane/Visuals"]
+modulate = Color(1, 0.5764706, 0, 1)
+self_modulate = Color(1, 0.5764706, 0, 1)
+position = Vector2(0, -292.5)
+scale = Vector2(0.56249976, 5.5703125)
+texture = ExtResource("1_ebmjs")
+
+[node name="CraneSprite2" type="Sprite2D" parent="Crane/Visuals"]
+modulate = Color(1, 0.5764706, 0, 1)
+self_modulate = Color(1, 0.5764706, 0, 1)
+position = Vector2(415.5, -622.5)
+scale = Vector2(7.0078125, 0.5234375)
+texture = ExtResource("1_ebmjs")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Crane"]
+position = Vector2(-28, -645)
+scale = Vector2(2, 2)
+sprite_frames = SubResource("SpriteFrames_beacon")
+animation = &"idle"
+autoplay = "idle"
+
+[node name="TrolleyPivot" type="Marker2D" parent="Crane"]
+position = Vector2(352, -596)
+
+[node name="TrolleyCart" type="ColorRect" parent="Crane/TrolleyPivot"]
+offset_left = -22.0
+offset_top = -12.0
+offset_right = 22.0
+offset_bottom = 6.0
+color = Color(0.18, 0.2, 0.24, 1)
+
+[node name="TrolleyStripe" type="ColorRect" parent="Crane/TrolleyPivot"]
+offset_left = -18.0
+offset_top = -2.0
+offset_right = 18.0
+offset_bottom = 2.0
+color = Color(0.95, 0.75, 0.1, 1)
+
+[node name="Line2D" type="Line2D" parent="Crane"]
+width = 3.0
+default_color = Color(0.2, 0.22, 0.25, 1)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+
+[node name="RopeRayCast" type="RayCast2D" parent="Crane"]
+position = Vector2(387.5, -600)
+target_position = Vector2(0, 100)
+
+[node name="Payload" type="RigidBody2D" parent="Crane"]
+top_level = true
+position = Vector2(1378.5, 716)
+mass = 5.0
+gravity_scale = 1.8
+continuous_cd = 1
+linear_damp = 0.4
+angular_damp = 2.0
+
+[node name="Sprite2D" type="Sprite2D" parent="Crane/Payload"]
+texture = ExtResource("10_hook")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Crane/Payload"]
+shape = SubResource("CapsuleShape2D_hook")
+
+[node name="CargoCrate" type="RigidBody2D" parent="."]
+position = Vector2(1378.5, 980)
+mass = 6.0
+
+[node name="Sprite2D" type="Sprite2D" parent="CargoCrate"]
+modulate = Color(0.85, 0.55, 0.2, 1)
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("1_ebmjs")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="CargoCrate"]
+shape = SubResource("RectangleShape2D_crate")
