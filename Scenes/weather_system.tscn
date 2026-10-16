@@ -1,9 +1,11 @@
 [gd_scene format=3 uid="uid://ds7wan56d10w4"]
 
 [ext_resource type="Script" uid="uid://bpki6vlap8iu" path="res://Scripts/weather_system.gd" id="1_weather"]
+[ext_resource type="AudioStream" uid="uid://dpq112kxqokkf" path="res://Sounds/Rain/light-rain-loop.wav" id="2_7l0lc"]
 [ext_resource type="Script" uid="uid://cguyyappqn4l3" path="res://addons/weather_fx_2d_lite/weather_layer_lite.gd" id="2_layer"]
-[ext_resource type="Material" path="res://addons/weather_fx_2d_lite/presets/rain_heavy__night_storm.tres" id="3_rain"]
-[ext_resource type="Material" path="res://addons/weather_fx_2d_lite/presets/lightning_flash__single_strike.tres" id="4_lightning"]
+[ext_resource type="AudioStream" uid="uid://b4qq1efg17xn" path="res://Sounds/Rain/heavy-rain-drops.wav" id="3_skoxg"]
+[ext_resource type="AudioStream" uid="uid://cimrrtyu5epp2" path="res://Sounds/Rain/thunder-explosion.wav" id="4_2ut7w"]
+[ext_resource type="Material" uid="uid://b0h61c80061g4" path="res://addons/weather_fx_2d_lite/presets/lightning_flash__single_strike.tres" id="4_lightning"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hint"]
 content_margin_left = 12.0
@@ -24,6 +26,9 @@ corner_radius_bottom_left = 6
 [node name="WeatherSystem" type="CanvasLayer" unique_id=1743711164]
 layer = 10
 script = ExtResource("1_weather")
+downpour_audio = ExtResource("2_7l0lc")
+night_storm_audio = ExtResource("3_skoxg")
+lightning_audio = ExtResource("4_2ut7w")
 
 [node name="AtmosphereTint" type="ColorRect" parent="." unique_id=429166023]
 anchors_preset = 15
@@ -32,7 +37,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.07, 0.1, 0.2, 0.6)
+color = Color(1, 1, 1, 0)
 
 [node name="RainLayer" type="ColorRect" parent="." unique_id=165197715]
 anchors_preset = 15
@@ -42,7 +47,6 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("2_layer")
-preset = ExtResource("3_rain")
 
 [node name="LightningLayer" type="ColorRect" parent="." unique_id=1618706672]
 anchors_preset = 15
@@ -86,3 +90,15 @@ theme_override_font_sizes/font_size = 14
 text = "Weather: Night Storm  |  [1] Downpour  [2] Night Storm  [3] Clear  [L] Lightning"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="DownpourAudioPlayer" type="AudioStreamPlayer" parent="." unique_id=1832049182]
+stream = ExtResource("2_7l0lc")
+bus = &"Master"
+
+[node name="NightStormAudioPlayer" type="AudioStreamPlayer" parent="." unique_id=1832049183]
+stream = ExtResource("3_skoxg")
+bus = &"Master"
+
+[node name="LightningAudioPlayer" type="AudioStreamPlayer" parent="." unique_id=1832049184]
+stream = ExtResource("4_2ut7w")
+bus = &"Master"

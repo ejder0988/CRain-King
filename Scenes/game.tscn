@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://dluhjc5wceud7"]
 
 [ext_resource type="Texture2D" uid="uid://bpgqinstsflww" path="res://icon.svg" id="1_ebmjs"]
+[ext_resource type="Texture2D" uid="uid://b23a8sw2hpco2" path="res://Sprites/Background/ground.png" id="2_nnt18"]
 [ext_resource type="Texture2D" uid="uid://cvk8ykhw5wgrj" path="res://Sprites/8bit-pixel-art-cityscape-background-600w-2637792829.webp" id="2_qxrlw"]
 [ext_resource type="Script" uid="uid://lw7o5hh6h81i" path="res://Scripts/crane.gd" id="3_crane"]
 [ext_resource type="Texture2D" uid="uid://6xg61sc7wyfu" path="res://Sprites/beacon_idle_0.png" id="4_bidle0"]
@@ -14,9 +15,31 @@
 [ext_resource type="Texture2D" uid="uid://c1oscof7u4a3h" path="res://Sprites/Crane/crane_bucket.png" id="11_rku1e"]
 [ext_resource type="PackedScene" uid="uid://ds7wan56d10w4" path="res://Scenes/weather_system.tscn" id="11_weather"]
 [ext_resource type="Texture2D" uid="uid://cy3j8tdfsjg1e" path="res://Sprites/Crane/Arrow.png" id="12_1phco"]
+[ext_resource type="Shader" uid="uid://b2eeoxbloehs3" path="res://Shaders/cloud.gdshader" id="15_nb51f"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
-size = Vector2(3840, 100)
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_57qmd"]
+a = Vector2(-138.63829, 24.76596)
+b = Vector2(146.55319, 24.76596)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_yf5fn"]
+a = Vector2(41.617004, 9.957443)
+b = Vector2(54.638306, 18.12767)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_nnt18"]
+a = Vector2(52.340424, 17.36171)
+b = Vector2(78.893616, 19.659576)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_ewbju"]
+a = Vector2(77.617004, 19.659576)
+b = Vector2(97.78723, 29.36171)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_85qyi"]
+a = Vector2(96, 28.595749)
+b = Vector2(484.85107, 79.40425)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_iivbl"]
+a = Vector2(599.4894, -66.893616)
+b = Vector2(484.85107, 79.40425)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_base"]
 size = Vector2(160, 40)
@@ -201,6 +224,14 @@ height = 46.0
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_crate"]
 size = Vector2(64, 64)
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_g4v7s"]
+shader = ExtResource("15_nb51f")
+shader_parameter/pixelation = Vector2(256, 256)
+shader_parameter/scroll_speed1 = Vector2(0.02, 0.007)
+shader_parameter/scroll_speed2 = Vector2(-0.015, -0.004)
+shader_parameter/center_pos = Vector2(0.5, 0)
+shader_parameter/position_impact = 0.75
+
 [node name="game" type="Node2D" unique_id=1131706611]
 
 [node name="background" type="Sprite2D" parent="." unique_id=224541661]
@@ -208,25 +239,36 @@ position = Vector2(1060, 481)
 scale = Vector2(3.8739493, 3.8739498)
 texture = ExtResource("2_qxrlw")
 
-[node name="Ground" type="StaticBody2D" parent="." unique_id=303785937]
-position = Vector2(960, 1040)
+[node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=944963635]
+position = Vector2(963, 820)
+scale = Vector2(3.9166667, 3.9166667)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Ground" unique_id=1522194292]
-shape = SubResource("RectangleShape2D_ground")
+[node name="Ground" type="Sprite2D" parent="StaticBody2D" unique_id=1219946096]
+texture = ExtResource("2_nnt18")
 
-[node name="RailColorRect" type="ColorRect" parent="Ground" unique_id=482944025]
-offset_left = -1920.0
-offset_top = -20.0
-offset_right = 1920.0
-offset_bottom = 20.0
-color = Color(0.12, 0.13, 0.16, 1)
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D" unique_id=957904783]
+position = Vector2(29.617004, 0)
+shape = SubResource("SegmentShape2D_57qmd")
 
-[node name="RailStripe" type="ColorRect" parent="Ground" unique_id=1057779557]
-offset_left = -1920.0
-offset_top = -24.0
-offset_right = 1920.0
-offset_bottom = -20.0
-color = Color(0.4, 0.42, 0.45, 1)
+[node name="CollisionShape2D2" type="CollisionShape2D" parent="StaticBody2D" unique_id=1824992915]
+position = Vector2(134.55318, 14.042553)
+shape = SubResource("SegmentShape2D_yf5fn")
+
+[node name="CollisionShape2D3" type="CollisionShape2D" parent="StaticBody2D" unique_id=1036217469]
+position = Vector2(134.55318, 14.042553)
+shape = SubResource("SegmentShape2D_nnt18")
+
+[node name="CollisionShape2D4" type="CollisionShape2D" parent="StaticBody2D" unique_id=293140187]
+position = Vector2(134.55318, 14.042553)
+shape = SubResource("SegmentShape2D_ewbju")
+
+[node name="CollisionShape2D5" type="CollisionShape2D" parent="StaticBody2D" unique_id=847514980]
+position = Vector2(134.55318, 14.042553)
+shape = SubResource("SegmentShape2D_85qyi")
+
+[node name="CollisionShape2D6" type="CollisionShape2D" parent="StaticBody2D" unique_id=275872876]
+position = Vector2(134.55318, 14.042553)
+shape = SubResource("SegmentShape2D_iivbl")
 
 [node name="Crane" type="CharacterBody2D" parent="." unique_id=1565022501]
 position = Vector2(991, 1016)
@@ -305,7 +347,7 @@ animation = &"catch_start"
 shape = SubResource("CapsuleShape2D_hook")
 
 [node name="CargoCrate" type="RigidBody2D" parent="." unique_id=1639912541]
-position = Vector2(1378.5, 980)
+position = Vector2(1378.5, 875)
 mass = 6.0
 
 [node name="Sprite2D" type="Sprite2D" parent="CargoCrate" unique_id=768113672]
@@ -317,3 +359,10 @@ texture = ExtResource("1_ebmjs")
 shape = SubResource("RectangleShape2D_crate")
 
 [node name="WeatherSystem" parent="." unique_id=1491274038 instance=ExtResource("11_weather")]
+visible = false
+
+[node name="CloudShader" type="ColorRect" parent="." unique_id=1621648702]
+visible = false
+material = SubResource("ShaderMaterial_g4v7s")
+offset_right = 2222.0
+offset_bottom = 339.0
