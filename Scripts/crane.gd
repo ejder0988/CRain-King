@@ -18,16 +18,59 @@ class_name CraneController
 @export var rope_stiffness: float = 1.0 ## 1.0 = Inextensible steel wire constraint
 
 @export_group("Aim & Swing Physics")
-@export var swing_max_angle_deg: float = 72.0 ## Maximum swing angle in degrees (-72 to +72)
-@export var pendulum_gravity: float = 850.0 ## Restoring force pulling rope back toward vertical
-@export var pendulum_damping: float = 2.4 ## Smooth damping bringing rope to rest when not pushed
-@export var swing_inertia_scale: float = 0.85 ## How strongly trolley push/movement accelerates the swing
-@export var movement_swing_strength: float = 2.0 ## How strongly continuous trolley movement tilts the rope opposite to motion
-@export var turn_swing_kick: float = 5.2 ## Swing angular impulse applied when crane turns (significantly amplified)
-@export var lock_trolley_during_descent: bool = true ## Keep trolley fixed in place while claw is deployed
+## Maximum swing angle in degrees (-55 to +55)
+@export var swing_max_angle_deg: float = 55.0
+## Restoring gravity force pulling rope back toward vertical
+@export var pendulum_gravity: float = 780.0
+## Smooth damping bringing rope to rest when not pushed (higher = less oscillation)
+@export var pendulum_damping: float = 1.8
+
+@export_subgroup("Trolley Movement Swing (Trolley Hareket Savrulması)")
+## Continuous trolley movement swing tilt for Tier 1 (düşürdükçe ip daha az sallanır)
+@export var movement_swing_strength_tier1: float = 1.35
+## Continuous trolley movement swing tilt for Tier 2 (düşürdükçe ip daha az sallanır)
+@export var movement_swing_strength_tier2: float = 1.75
+## Acceleration inertia kick when trolley starts/stops (Tier 1)
+@export var swing_inertia_tier1: float = 0.95
+## Acceleration inertia kick when trolley starts/stops (Tier 2)
+@export var swing_inertia_tier2: float = 1.25
+## Direct driving lag when holding A/D movement keys (Tier 1)
+@export var drive_lag_tier1: float = 7.5
+## Direct driving lag when holding A/D movement keys (Tier 2)
+@export var drive_lag_tier2: float = 11.0
+
+@export_subgroup("Turn Swing & Whip (Dönüş Savrulması)")
+## Swing impulse applied when crane turns around (Tier 1 - azaltıldı)
+@export var turn_swing_kick_tier1: float = 8.5
+## Swing impulse applied when crane turns around (Tier 2 - azaltıldı)
+@export var turn_swing_kick_tier2: float = 12.0
+## Continuous rotational whip torque during mast flip turn (Tier 1)
+@export var turn_whip_power_tier1: float = 16.0
+## Continuous rotational whip torque during mast flip turn (Tier 2)
+@export var turn_whip_power_tier2: float = 22.0
+
+@export_subgroup("Winch & Aim Limits")
+@export var lock_trolley_during_descent: bool = false ## Allow subtle trolley steering while deployed
 @export var auto_retract_after_landing: bool = true ## Auto-retract back to top after grab/landing
 @export var landing_retract_delay: float = 0.5 ## Delay before auto-retracting if no object caught
 @export var arrow_distance: float = 123.0 ## Distance of arrow from TrolleyPivot
+
+@export_group("Payload Tier & Speed Upgrades")
+## Payload upgrade tier (1: Standard Physics, 2: Fast Rocket-Guided with better_catch animation)
+@export var payload_tier: int = 1
+## Key to toggle/upgrade payload tier (Default: K)
+@export var payload_upgrade_key: Key = KEY_K
+## Standard trolley traverse speed (px/s) for Tier 1
+@export var trolley_speed_tier1: float = 380.0
+## Standard winch deploy/retract speed (px/s) for Tier 1
+@export var rope_winch_speed_tier1: float = 260.0
+## Upgraded agile trolley traverse speed (px/s) for Tier 2
+@export var trolley_speed_tier2: float = 580.0
+## Upgraded fast winch deploy/retract speed (px/s) for Tier 2
+@export var rope_winch_speed_tier2: float = 480.0
+## Fling speed multiplier when releasing cargo from swing (Tier 1 vs Tier 2)
+@export var fling_multiplier_tier1: float = 2.0
+@export var fling_multiplier_tier2: float = 2.6
 
 @export_group("Aim Trajectory & Arrow Juice")
 ## Enable pulsing bob animation along the aim direction
@@ -51,6 +94,28 @@ class_name CraneController
 
 @export_group("Cargo Carrying & Release")
 @export var cargo_carry_offset_y: float = 36.0 ## Vertical distance of cargo below payload center
+
+@export_group("Water Interaction & Audio")
+## Enable payload physical interaction and scooping with fluid water
+@export var enable_water_interaction: bool = true
+## Custom audio file for water contact/splash (assignable in Inspector)
+@export var water_splash_audio: AudioStream = null
+## Volume (dB) for water splash sound
+@export var water_splash_volume_db: float = 0.0
+## Radius around payload to detect and scoop water particles
+@export var water_scoop_radius: float = 75.0
+## Spring attraction force holding water particles in payload bucket
+@export var water_hold_force: float = 850.0
+## Minimum particles nearby required to trigger a water scoop
+@export var water_min_scoop_particles: int = 4
+
+@export_group("Pickup Juice & Screen Shake")
+## Enable subtle screen shake when payload catches/picks up an item
+@export var enable_pickup_shake: bool = true
+## Screen shake intensity in pixels (subtle = 3.5 to 5.0 px)
+@export var pickup_shake_intensity: float = 4.0
+## Duration of the shake in seconds
+@export var pickup_shake_duration: float = 0.22
 
 @export_group("Visual Rendering")
 @export var rope_segments: int = 12 ## Curve resolution segments when cable is slack
@@ -127,6 +192,9 @@ var swing_timer: float = 0.0 ## Oscillator time tracker
 var current_swing_angle: float = 0.0 ## Current swing angle in radians
 var swing_angular_velocity: float = 0.0 ## Current swing angular velocity in radians/sec
 var prev_trolley_velocity: Vector2 = Vector2.ZERO ## Tracks trolley acceleration for inertial swing
+var movement_swing_strength: float = 1.35 ## Active movement swing multiplier
+var swing_inertia_scale: float = 0.95 ## Active acceleration inertia multiplier
+var turn_swing_kick: float = 8.5 ## Active turn impulse
 var locked_aim_angle: float = 0.0 ## Angle locked when DOWN was pressed
 var locked_aim_dir: Vector2 = Vector2.DOWN ## Direction vector locked when DOWN was pressed
 
@@ -136,6 +204,13 @@ var can_release_cargo: bool = false ## True once initial descent down key is rel
 var prev_down_pressed: bool = false ## Tracks down key state for just_pressed detection
 var just_released_cargo_this_frame: bool = false ## Prevents SPACE from triggering crane flip on release frame
 var waiting_for_down_release: bool = false ## Requires releasing DOWN key after cargo drop before launching next descent
+
+var is_carrying_water: bool = false ## True when fluid water is scooped and held by payload
+var can_release_water: bool = false ## True once rope reaches top and down key is released
+var _cached_fluid_water: FluidWater = null
+var _water_audio_player: AudioStreamPlayer2D = null
+var _was_in_water_prev_frame: bool = false
+var _water_splash_cooldown: float = 0.0
 
 var is_descending: bool = false ## True when lowering winch with catch sequence
 var has_resolved_landing: bool = false ## True once ground/cargo landing has resolved
@@ -147,6 +222,8 @@ var _aim_trajectory: CraneAimTrajectory = null
 var is_aim_locked_on: bool = false
 var locked_target_node: Node2D = null
 var _was_locked_on_prev_frame: bool = false
+var _payload_key_pressed_prev: bool = false
+var _rocket_visual: PayloadRocketVisual = null
 
 
 func _find_payload_sprite() -> AnimatedSprite2D:
@@ -215,6 +292,7 @@ func _ready() -> void:
 	current_payload_level = PayloadLevel.TOP
 	is_carrying_cargo = false
 	grabbed_body = null
+	is_carrying_water = false
 
 	# Fallback node lookups
 	if not payload:
@@ -255,6 +333,7 @@ func _ready() -> void:
 
 	_update_trolley_position()
 	prev_trolley_pos = trolley_pivot.global_position
+	set_payload_tier(payload_tier)
 
 	# CRITICAL: Payload lives independently in world space
 	if payload:
@@ -270,6 +349,14 @@ func _ready() -> void:
 		payload.max_contacts_reported = 8
 		if not payload.body_entered.is_connected(_on_payload_body_entered):
 			payload.body_entered.connect(_on_payload_body_entered)
+
+		# Setup Rocket Thruster visual on payload for Tier 2
+		if not _rocket_visual:
+			_rocket_visual = payload.get_node_or_null("RocketVisual") as PayloadRocketVisual
+			if not _rocket_visual:
+				_rocket_visual = PayloadRocketVisual.new()
+				_rocket_visual.name = "RocketVisual"
+				payload.add_child(_rocket_visual)
 
 	# Crane mast beacon AnimatedSprite2D signal connections
 	if animated_sprite:
@@ -308,6 +395,12 @@ func _ready() -> void:
 	# Continuous subtle millimetric idle shake for designated sprites
 	_init_idle_shake()
 
+	# Initialize water splash audio player
+	_init_water_audio_player()
+
+	# Initialize active tier physics parameters from Inspector settings
+	set_payload_tier(payload_tier)
+
 
 func _process(_delta: float) -> void:
 	_update_rope_visual()
@@ -316,6 +409,17 @@ func _process(_delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	# 1. Cable trolley moves back and forth along the boom (carrying cargo anywhere player wants)
 	_handle_trolley_movement(delta)
+
+	# Handle payload tier upgrade input (K key)
+	if Input.is_key_pressed(payload_upgrade_key):
+		if not _payload_key_pressed_prev:
+			_payload_key_pressed_prev = true
+			if payload_tier == 1:
+				upgrade_payload()
+			else:
+				set_payload_tier(1)
+	else:
+		_payload_key_pressed_prev = false
 
 	# 2. Aim & swing oscillation when at the top, or angled descent trajectory when deployed
 	if is_at_top:
@@ -335,14 +439,33 @@ func _physics_process(delta: float) -> void:
 	# 6. Check cargo contact during descent
 	_check_payload_descent_contact()
 
-	# 7. Payload rotation limit [-75 deg, +75 deg]
+	# 7. Check water interaction and scooping
+	_check_water_interaction(delta)
+
+	# 8. Payload rotation limit [-75 deg, +75 deg]
 	_apply_payload_rotation_limit(delta)
 
-	# Enable releasing cargo once user has released the down key after grab
+	# Enable releasing cargo ONLY after rope has fully reached the top AND user has released the down key
 	if is_carrying_cargo and not can_release_cargo:
-		var down_currently_pressed: bool = Input.is_action_pressed("rope_down") or Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)
-		if not down_currently_pressed:
-			can_release_cargo = true
+		if is_at_top:
+			var down_currently_pressed: bool = (
+				(InputMap.has_action("rope_down") and Input.is_action_pressed("rope_down"))
+				or Input.is_key_pressed(KEY_S)
+				or Input.is_key_pressed(KEY_DOWN)
+			)
+			if not down_currently_pressed:
+				can_release_cargo = true
+
+	# Enable releasing water ONLY after rope has fully reached the top AND user has released the down key
+	if is_carrying_water and not can_release_water:
+		if is_at_top:
+			var down_currently_pressed: bool = (
+				(InputMap.has_action("rope_down") and Input.is_action_pressed("rope_down"))
+				or Input.is_key_pressed(KEY_S)
+				or Input.is_key_pressed(KEY_DOWN)
+			)
+			if not down_currently_pressed:
+				can_release_water = true
 
 	# Reset one-frame release flag
 	just_released_cargo_this_frame = false
@@ -422,38 +545,59 @@ func _update_swing_oscillation(delta: float) -> void:
 		# Effective cable length for pendulum physics
 		var eff_len: float = maxf(current_rope_length, 50.0)
 
-		# Horizontal acceleration of the trolley (inertia pushes the pendulum)
+		# Horizontal acceleration of the trolley (inertia pushes the pendulum opposite to motion)
 		var trolley_accel_x: float = (trolley_velocity.x - prev_trolley_velocity.x) / delta
-		trolley_accel_x = clampf(trolley_accel_x, -4000.0, 4000.0)
+		trolley_accel_x = clampf(trolley_accel_x, -5000.0, 5000.0)
 
-		# 1. Restoring gravity torque (pulls toward 0)
-		var restoring: float = -(pendulum_gravity / eff_len) * sin(current_swing_angle)
+		# 1. Restoring gravity torque (pulls toward center)
+		var restoring: float = - (pendulum_gravity / eff_len) * sin(current_swing_angle)
 
 		# 2. Damping torque (smoothly settles to rest when idle)
-		var damping: float = -pendulum_damping * swing_angular_velocity
+		var damping: float = - pendulum_damping * swing_angular_velocity
 
 		# 3. Inertial push from trolley movement / acceleration (opposite to motion)
-		var inertial: float = +(trolley_accel_x / eff_len) * cos(current_swing_angle) * swing_inertia_scale
+		var inertial: float = (trolley_accel_x / eff_len) * cos(current_swing_angle) * swing_inertia_scale
 
-		# 4. Continuous movement lag (rope and payload lag behind the moving trolley)
-		var drag: float = +(trolley_velocity.x / eff_len) * movement_swing_strength * cos(current_swing_angle) * swing_inertia_scale
+		# 4. Continuous movement lag / drag (rope lags behind opposite to moving trolley)
+		var drag: float = (trolley_velocity.x / eff_len) * movement_swing_strength * cos(current_swing_angle) * swing_inertia_scale
 
-		var total_angular_accel: float = restoring + damping + inertial + drag
+		# 5. Continuous driving lag: Holding movement keys lags the rope opposite to motion
+		var pump_bonus: float = 0.0
+		var input_axis: float = _get_horizontal_input()
+		if input_axis != 0.0:
+			pump_bonus = input_axis * (drive_lag_tier2 if payload_tier >= 2 else drive_lag_tier1)
+
+		# 6. Continuous rotational whip torque during mast flip turn (in the turn direction)
+		var turn_whip: float = 0.0
+		if is_turning:
+			var whip_power: float = turn_whip_power_tier2 if payload_tier >= 2 else turn_whip_power_tier1
+			var whip_dir: float = float(facing_direction) if not _is_turn_reversing else -float(facing_direction) * 0.7
+			turn_whip = whip_dir * whip_power
+
+		# 7. Ambient gentle breeze push on the cable in the upper atmosphere
+		var ambient_wind: float = (sin(Time.get_ticks_msec() * 0.0016) * 0.14 + sin(Time.get_ticks_msec() * 0.0031) * 0.05) * swing_inertia_scale
+
+		var total_angular_accel: float = restoring + damping + inertial + drag + pump_bonus + turn_whip + ambient_wind
+
+		# Carrying cargo or water adds extra physical mass momentum to the swing
+		if is_carrying_cargo or is_carrying_water:
+			total_angular_accel *= (1.18 if payload_tier >= 2 else 1.10)
 
 		# Semi-implicit Euler integration
 		swing_angular_velocity += total_angular_accel * delta
-		swing_angular_velocity = clampf(swing_angular_velocity, -10.5, 10.5)
+		swing_angular_velocity = clampf(swing_angular_velocity, -28.0, 28.0)
 
 		current_swing_angle += swing_angular_velocity * delta
 
 		# Limit angle to maximum allowed swing
-		var max_rad: float = deg_to_rad(swing_max_angle_deg)
+		var active_max_angle: float = 88.0 if is_turning else swing_max_angle_deg
+		var max_rad: float = deg_to_rad(active_max_angle)
 		if absf(current_swing_angle) > max_rad:
 			current_swing_angle = clampf(current_swing_angle, -max_rad, max_rad)
-			swing_angular_velocity *= -0.3 # soft bounce against boom limit
+			swing_angular_velocity *= -0.72 # energetic elastic bounce against boom limit
 
 		# Prevent tiny floating-point jitter when near 0 and nearly still
-		if absf(current_swing_angle) < 0.001 and absf(swing_angular_velocity) < 0.005 and trolley_velocity.length_squared() < 1.0:
+		if not is_turning and absf(current_swing_angle) < 0.001 and absf(swing_angular_velocity) < 0.005 and trolley_velocity.length_squared() < 1.0:
 			current_swing_angle = 0.0
 			swing_angular_velocity = 0.0
 
@@ -464,7 +608,7 @@ func _update_swing_oscillation(delta: float) -> void:
 	# 1. Target Lock-On Detection along current aim angle
 	var aim_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
 	var locked_node: Node2D = null
-	if enable_target_lockon and not is_carrying_cargo:
+	if enable_target_lockon and not is_carrying_cargo and not is_carrying_water:
 		locked_node = _check_target_lockon(aim_dir)
 
 	is_aim_locked_on = (locked_node != null)
@@ -478,15 +622,17 @@ func _update_swing_oscillation(delta: float) -> void:
 	var target_color: Color = aim_color_normal
 	if is_carrying_cargo:
 		target_color = aim_color_cargo
+	elif is_carrying_water:
+		target_color = Color(0.18, 0.78, 1.0, 1.0)
 	elif is_aim_locked_on:
-		target_color = aim_color_locked
+		target_color = Color(1.0, 0.72, 0.15, 1.0) if payload_tier >= 2 else aim_color_locked
 
 	# 2. Update Arrow: visible, bobbing, inertia stretch and glowing
 	if arrow:
 		arrow.visible = true
 
 		# Bobbing along aim vector
-		var bob_speed: float = arrow_bob_speed * (1.6 if is_aim_locked_on else 1.0)
+		var bob_speed: float = arrow_bob_speed * (1.8 if is_aim_locked_on else 1.0)
 		var dynamic_dist: float = arrow_distance
 		if enable_arrow_bob:
 			dynamic_dist += sin(_arrow_anim_timer * bob_speed) * arrow_bob_amplitude
@@ -495,8 +641,8 @@ func _update_swing_oscillation(delta: float) -> void:
 
 		# Velocity inertia stretch & tilt
 		if enable_arrow_stretch:
-			var stretch: float = clampf(absf(swing_angular_velocity) * 0.065, 0.0, 0.35)
-			var pulse_scale: float = 1.0 + (0.08 if is_aim_locked_on else 0.03) * sin(_arrow_anim_timer * 14.0)
+			var stretch: float = clampf(absf(swing_angular_velocity) * 0.075, 0.0, 0.4)
+			var pulse_scale: float = 1.0 + (0.1 if is_aim_locked_on else 0.03) * sin(_arrow_anim_timer * 14.0)
 			arrow.scale.y = _base_arrow_scale.y * (1.0 + stretch) * pulse_scale
 			arrow.scale.x = _base_arrow_scale.x * (1.0 - stretch * 0.45) * pulse_scale
 			arrow.rotation = current_swing_angle - swing_angular_velocity * 0.035
@@ -506,7 +652,7 @@ func _update_swing_oscillation(delta: float) -> void:
 		# Smooth modulate transition to active aim color
 		arrow.modulate = arrow.modulate.lerp(target_color, 12.0 * delta)
 
-	# 3. Update Trajectory Dotted Laser Beam & Target Reticle
+	# 3. Update Trajectory Reticle
 	if _aim_trajectory:
 		var rope_origin: Vector2 = _get_rope_origin()
 		var target_pos: Vector2 = locked_target_node.global_position if is_aim_locked_on else (rope_origin + aim_dir * max_rope_length)
@@ -517,23 +663,25 @@ func _update_swing_oscillation(delta: float) -> void:
 			is_aim_locked_on,
 			target_pos,
 			target_color,
-			is_at_top and enable_trajectory_dots
+			is_at_top and enable_trajectory_dots,
+			(payload_tier >= 2)
 		)
 
 	# 4. Update Payload position and rotation to swing in unison
 	if payload and trolley_pivot:
 		var swing_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
+		var tangent_dir: Vector2 = Vector2(-swing_dir.y, swing_dir.x)
 		payload.global_position = _get_rope_origin() + swing_dir * current_rope_length
 		payload.rotation = current_swing_angle
-		payload.linear_velocity = Vector2.ZERO
-		payload.angular_velocity = 0.0
+		payload.linear_velocity = tangent_dir * (swing_angular_velocity * current_rope_length)
+		payload.angular_velocity = swing_angular_velocity
 
-	# 3. If carrying cargo, it remains attached under the payload at the top
+	# 5. If carrying cargo, it remains attached under the payload at the top
 	if is_carrying_cargo and grabbed_body and is_instance_valid(grabbed_body):
 		grabbed_body.global_position = payload.global_position + Vector2.DOWN.rotated(current_swing_angle) * cargo_carry_offset_y
 		grabbed_body.rotation = current_swing_angle
-		grabbed_body.linear_velocity = Vector2.ZERO
-		grabbed_body.angular_velocity = 0.0
+		grabbed_body.linear_velocity = payload.linear_velocity
+		grabbed_body.angular_velocity = payload.angular_velocity
 
 	# Keep level at TOP
 	if current_payload_level != PayloadLevel.TOP:
@@ -544,13 +692,17 @@ func _update_swing_oscillation(delta: float) -> void:
 func _check_target_lockon(aim_dir: Vector2) -> Node2D:
 	var rope_orig: Vector2 = _get_rope_origin()
 	var best_target: Node2D = null
-	var min_perp: float = 62.0 # Catch zone width threshold
+	var min_perp: float = 160.0 if payload_tier >= 2 else 72.0 # Tier 2 rocket guidance has wider lock-on corridor
+	var max_reach: float = max_rope_length + (150.0 if payload_tier >= 2 else 75.0)
 
 	var tree := get_tree()
 	if not tree:
 		return null
 
 	var candidates: Array[Node] = []
+	for r in tree.get_nodes_in_group("rock"):
+		if not candidates.has(r):
+			candidates.append(r)
 	for c in tree.get_nodes_in_group("cargo"):
 		if not candidates.has(c):
 			candidates.append(c)
@@ -558,13 +710,26 @@ func _check_target_lockon(aim_dir: Vector2) -> Node2D:
 		if not candidates.has(g):
 			candidates.append(g)
 
+	# When carrying a rock, check if aiming directly at the StoneWall
+	if is_carrying_cargo:
+		var wall = tree.get_first_node_in_group("stone_wall")
+		if wall and is_instance_valid(wall) and wall.has_method("get_wall_top_y_local"):
+			if "current_stage" in wall and "max_stages" in wall and wall.current_stage < wall.max_stages:
+				var wall_target_pos := Vector2(wall.global_position.x, wall.global_position.y + wall.get_wall_top_y_local() * wall.scale.y)
+				var to_wall: Vector2 = wall_target_pos - rope_orig
+				var proj: float = to_wall.dot(aim_dir)
+				if proj > 60.0 and proj <= max_reach + 80.0:
+					var perp: float = (to_wall - aim_dir * proj).length()
+					if perp < 85.0 * wall.scale.x:
+						return wall
+
 	# Proximity check along aim ray
 	for node in candidates:
 		if node is Node2D and node != payload and node != grabbed_body and is_instance_valid(node):
 			var to_node: Vector2 = node.global_position - rope_orig
 			var proj: float = to_node.dot(aim_dir)
-			# Only check objects in front along the aim vector within winch reach
-			if proj > 60.0 and proj <= max_rope_length + 65.0:
+			# Check objects along aim vector within reach
+			if proj > 50.0 and proj <= max_reach:
 				var perp: float = (to_node - aim_dir * proj).length()
 				if perp < min_perp:
 					min_perp = perp
@@ -586,6 +751,10 @@ func _launch_aimed_descent() -> void:
 	is_at_top = false
 	locked_aim_angle = current_swing_angle
 	locked_aim_dir = Vector2.DOWN.rotated(locked_aim_angle)
+
+	# Ignite rocket thruster visuals for Tier 2
+	if payload_tier >= 2 and _rocket_visual:
+		_rocket_visual.set_firing(true)
 
 	# Launch burst juice effect on arrow
 	if arrow:
@@ -613,9 +782,11 @@ func _update_deployed_trajectory(delta: float) -> void:
 	if _aim_trajectory and _aim_trajectory.is_active:
 		_aim_trajectory.is_active = false
 
-	# Interpolate current cable length toward target at winch speed
+	# Winch extension/retraction calculation
+	var prev_len: float = current_rope_length
 	if current_rope_length != target_rope_length:
 		current_rope_length = move_toward(current_rope_length, target_rope_length, rope_winch_speed * delta)
+	var winch_rate: float = (current_rope_length - prev_len) / maxf(delta, 0.001)
 
 	# Update payload level tracking (TOP, MIDDLE, BOTTOM)
 	if current_rope_length <= min_rope_length + 4.0:
@@ -627,25 +798,74 @@ func _update_deployed_trajectory(delta: float) -> void:
 			current_payload_level = PayloadLevel.BOTTOM
 			payload_level_changed.emit(current_payload_level)
 
-	# Guide payload along the locked aim direction
-	if payload and trolley_pivot:
-		var target_pos: Vector2 = _get_rope_origin() + locked_aim_dir * current_rope_length
-		payload.global_position = target_pos
-		payload.rotation = locked_aim_angle
+	# --- DYNAMIC SWING PHYSICS DURING DESCENT ---
+	# "ilk seviye de daha cok fizik olsun payload sallansin duz gitmesin"
+	# "2. seviyede payload uzerinde roket oldugundan dolayi hedefe kitlenmesi daha kolay ama fizikli ve daha eglenceli"
+	var eff_len: float = maxf(current_rope_length, 60.0)
+	var restoring: float = - (pendulum_gravity / eff_len) * sin(current_swing_angle)
+	var damping: float = - (pendulum_damping * 0.5) * swing_angular_velocity
+	var coriolis: float = - (2.0 * winch_rate / eff_len) * swing_angular_velocity
 
-		if current_rope_length < target_rope_length:
-			payload.linear_velocity = locked_aim_dir * rope_winch_speed
-		elif current_rope_length > target_rope_length:
-			payload.linear_velocity = - locked_aim_dir * rope_winch_speed
+	var total_deployed_accel: float = restoring + damping + coriolis
+
+	if payload_tier >= 2:
+		# Tier 2: ROCKET-POWERED GUIDED HOOK
+		if _rocket_visual:
+			_rocket_visual.set_firing(is_descending)
+
+		# 1. Active Rocket Guidance towards target if locked or nearby
+		if locked_target_node and is_instance_valid(locked_target_node):
+			var to_target: Vector2 = locked_target_node.global_position - _get_rope_origin()
+			var target_angle: float = Vector2.DOWN.angle_to(to_target)
+			var angle_err: float = target_angle - current_swing_angle
+			var rocket_thrust: float = clampf(angle_err * 46.0 - swing_angular_velocity * 4.2, -32.0, 32.0)
+			total_deployed_accel += rocket_thrust
 		else:
-			payload.linear_velocity = Vector2.ZERO
+			# Auto-homing scan for any nearby grabbable rock or stone wall
+			var soft_target = _check_target_lockon(Vector2.DOWN.rotated(current_swing_angle))
+			if soft_target and is_instance_valid(soft_target):
+				var to_t: Vector2 = soft_target.global_position - _get_rope_origin()
+				var t_angle: float = Vector2.DOWN.angle_to(to_t)
+				var a_err: float = t_angle - current_swing_angle
+				total_deployed_accel += clampf(a_err * 30.0, -22.0, 22.0)
+
+		# 2. Mid-air manual rocket steering with A/D / Left/Right keys
+		var steer_input: float = _get_horizontal_input()
+		if steer_input != 0.0:
+			total_deployed_accel += - steer_input * 26.0
+	else:
+		# Tier 1: PURE PENDULUM SWING PHYSICS (Claw swings freely with real momentum and inertia)
+		if _rocket_visual:
+			_rocket_visual.set_firing(false)
+		if trolley_velocity.length_squared() > 10.0:
+			total_deployed_accel += (trolley_velocity.x / eff_len) * 3.2
+
+	# Integrate swing during deployment
+	swing_angular_velocity += total_deployed_accel * delta
+	swing_angular_velocity = clampf(swing_angular_velocity, -24.0, 24.0)
+	current_swing_angle += swing_angular_velocity * delta
+
+	# Limit angle to boom limit
+	var max_rad: float = deg_to_rad(swing_max_angle_deg)
+	if absf(current_swing_angle) > max_rad:
+		current_swing_angle = clampf(current_swing_angle, -max_rad, max_rad)
+		swing_angular_velocity *= -0.5
+
+	# Update payload position and velocities along swinging cable
+	var swing_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
+	var tangent_dir: Vector2 = Vector2(-swing_dir.y, swing_dir.x)
+	if payload and trolley_pivot:
+		payload.global_position = _get_rope_origin() + swing_dir * current_rope_length
+		payload.rotation = current_swing_angle
+		payload.linear_velocity = swing_dir * winch_rate + tangent_dir * (swing_angular_velocity * current_rope_length)
+		payload.angular_velocity = swing_angular_velocity
 
 	# Move grabbed cargo with payload while deployed
 	if is_carrying_cargo and grabbed_body and is_instance_valid(grabbed_body):
 		grabbed_body.global_position = payload.global_position + Vector2.DOWN.rotated(payload.rotation) * cargo_carry_offset_y
 		grabbed_body.rotation = payload.rotation
 		grabbed_body.linear_velocity = payload.linear_velocity
-		grabbed_body.angular_velocity = 0.0
+		grabbed_body.angular_velocity = payload.angular_velocity
 
 	# Check return to top
 	if current_rope_length <= min_rope_length + 4.0 and target_rope_length == min_rope_length:
@@ -654,6 +874,8 @@ func _update_deployed_trajectory(delta: float) -> void:
 		is_descending = false
 		has_resolved_landing = false
 		current_payload_level = PayloadLevel.TOP
+		if _rocket_visual:
+			_rocket_visual.set_firing(false)
 		if arrow:
 			arrow.visible = true
 			arrow.scale = _base_arrow_scale * 0.2
@@ -665,7 +887,7 @@ func _update_deployed_trajectory(delta: float) -> void:
 
 		# When returning to top, ensure default animation is playing
 		if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
-			if payload_sprite.animation == &"catch_start" or payload_sprite.animation == &"catch_loop":
+			if payload_sprite.animation == &"catch_start" or payload_sprite.animation == &"catch_loop" or payload_sprite.animation == &"better_catch":
 				payload_sprite.play("default")
 
 		# Resume swinging seamlessly from current angle
@@ -688,13 +910,13 @@ func _handle_rope_winch_target(_delta: float) -> void:
 		if is_descending:
 			is_descending = false
 			has_resolved_landing = false
-			if not is_carrying_cargo and payload_sprite:
+			if not is_carrying_cargo and not is_carrying_water and payload_sprite:
 				var anim: StringName = payload_sprite.animation
 				if anim == &"catch_start" or anim == &"catch_loop":
 					if payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
 						payload_sprite.play("default")
 
-	# DOWN input: release held cargo if carrying, otherwise launch aimed descent
+	# DOWN input: release held cargo/water if carrying, otherwise launch aimed descent
 	var is_down_pressed: bool = Input.is_action_pressed("rope_down") \
 		or Input.is_key_pressed(KEY_S) \
 		or Input.is_key_pressed(KEY_DOWN)
@@ -710,13 +932,21 @@ func _handle_rope_winch_target(_delta: float) -> void:
 		or (is_down_pressed and not prev_down_pressed)
 
 	if is_down_just_pressed:
-		if is_carrying_cargo and can_release_cargo:
-			just_released_cargo_this_frame = true
-			waiting_for_down_release = true
-			_release_cargo()
-		elif is_at_top and not is_carrying_cargo:
+		if is_carrying_cargo:
+			# Payload bir obje tutmusken ip en yukari (top) noktaya ulasmadan birakamaz
+			if is_at_top and can_release_cargo:
+				just_released_cargo_this_frame = true
+				waiting_for_down_release = true
+				_release_cargo()
+		elif is_carrying_water:
+			# Water cannot be released until reaching top!
+			if is_at_top and can_release_water:
+				just_released_cargo_this_frame = true
+				waiting_for_down_release = true
+				_release_water()
+		elif is_at_top:
 			_launch_aimed_descent()
-		elif not is_at_top:
+		else:
 			target_rope_length = max_rope_length
 
 	prev_down_pressed = is_down_pressed
@@ -733,16 +963,24 @@ func _start_payload_descent() -> void:
 	is_descending = true
 	has_resolved_landing = false
 
-	# If carrying cargo, maintain hold pose while descending to place it
-	if is_carrying_cargo:
+	# If carrying cargo or water, maintain hold pose while descending to place it
+	if is_carrying_cargo or is_carrying_water:
 		if payload_sprite.sprite_frames.has_animation("hold"):
 			payload_sprite.play("hold")
 	else:
 		has_caught_object = false
-		if payload_sprite.sprite_frames.has_animation("catch_start"):
-			payload_sprite.play("catch_start")
-		elif payload_sprite.sprite_frames.has_animation("catch"):
-			payload_sprite.play("catch")
+		if payload_tier >= 2:
+			# Tier 2: 2. seviye için sadece better_catch animasyonu oynasın!
+			if payload_sprite.sprite_frames.has_animation("better_catch"):
+				payload_sprite.play("better_catch")
+			elif payload_sprite.sprite_frames.has_animation("catch"):
+				payload_sprite.play("catch")
+		else:
+			# Tier 1: Standart catch sequence
+			if payload_sprite.sprite_frames.has_animation("catch_start"):
+				payload_sprite.play("catch_start")
+			elif payload_sprite.sprite_frames.has_animation("catch"):
+				payload_sprite.play("catch")
 
 
 func _check_payload_descent_contact() -> void:
@@ -773,10 +1011,33 @@ func _resolve_landing() -> void:
 		return
 	has_resolved_landing = true
 	is_descending = false
+	if _rocket_visual:
+		_rocket_visual.set_firing(false)
 
 	# CASE A: Currently carrying cargo and lowered onto surface -> Release/Deposit cargo
 	if is_carrying_cargo:
+		if _check_and_deposit_to_stone_wall():
+			if auto_retract_after_landing and is_inside_tree():
+				var tree := get_tree()
+				if tree:
+					tree.create_timer(landing_retract_delay).timeout.connect(func():
+						if not is_at_top:
+							target_rope_length = min_rope_length
+					)
+			return
 		_release_cargo()
+		if auto_retract_after_landing and is_inside_tree():
+			var tree := get_tree()
+			if tree:
+				tree.create_timer(landing_retract_delay).timeout.connect(func():
+					if not is_at_top:
+						target_rope_length = min_rope_length
+				)
+		return
+
+	# CASE A2: Currently carrying water and lowered onto surface -> Release/Splash water
+	if is_carrying_water:
+		_release_water()
 		if auto_retract_after_landing and is_inside_tree():
 			var tree := get_tree()
 			if tree:
@@ -800,6 +1061,7 @@ func _resolve_landing() -> void:
 			if payload:
 				payload.add_collision_exception_with(grabbed_body)
 			cargo_picked_up.emit(grabbed_body)
+			_trigger_pickup_screen_shake()
 
 		if payload_sprite.sprite_frames.has_animation("hold"):
 			payload_sprite.play("hold")
@@ -830,14 +1092,15 @@ func _resolve_landing() -> void:
 # 8. CARGO RELEASE MECHANISM (DOWN KEY ONLY)
 # ==============================================================================
 func _handle_cargo_release_input() -> void:
-	if not is_carrying_cargo:
+	if not is_carrying_cargo and not is_carrying_water:
 		return
 	if is_turning:
 		return
-	if not can_release_cargo:
+	# Payload bir obje tutmussa ip en yukari (top) kisma cikmadan kesinlikle birakamaz!
+	if not is_at_top:
 		return
 
-	# Cargo release is triggered ONLY by the DOWN key (S / Down Arrow / rope_down)
+	# Cargo/water release is triggered ONLY by the DOWN key (S / Down Arrow / rope_down)
 	var is_down_just_pressed: bool = (
 		(InputMap.has_action("rope_down") and Input.is_action_just_pressed("rope_down"))
 		or Input.is_key_pressed(KEY_S)
@@ -845,9 +1108,14 @@ func _handle_cargo_release_input() -> void:
 	)
 
 	if is_down_just_pressed and not waiting_for_down_release:
-		just_released_cargo_this_frame = true
-		waiting_for_down_release = true
-		_release_cargo()
+		if is_carrying_cargo and can_release_cargo:
+			just_released_cargo_this_frame = true
+			waiting_for_down_release = true
+			_release_cargo()
+		elif is_carrying_water and can_release_water:
+			just_released_cargo_this_frame = true
+			waiting_for_down_release = true
+			_release_water()
 
 
 func _release_cargo() -> void:
@@ -855,30 +1123,50 @@ func _release_cargo() -> void:
 		is_carrying_cargo = false
 		grabbed_body = null
 		has_caught_object = false
+		can_release_cargo = false
 		return
 
 	var released_ref: RigidBody2D = grabbed_body
 
-	# 1. Unfreeze physics body so it falls under normal gravity
+	# 1. Unfreeze physics body so it flies with real gravity and collisions
 	released_ref.set_deferred("freeze", false)
 
-	# 2. Inherit crane velocity + slight downward release momentum
-	var release_velocity: Vector2 = payload.linear_velocity
+	# 2. Inherit crane velocity + generous tangential swing fling momentum
+	var release_velocity: Vector2 = Vector2.ZERO
 	if is_at_top:
-		# If swinging at top, inherit tangential release impulse
 		var swing_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
 		var angular_vel: float = swing_angular_velocity
 		var tangent_dir: Vector2 = Vector2(-swing_dir.y, swing_dir.x)
-		release_velocity = tangent_dir * (angular_vel * current_rope_length) + trolley_velocity + Vector2(0, 30.0)
-	else:
-		release_velocity += Vector2(0, 30.0)
 
-	grabbed_body.linear_velocity = release_velocity
-	grabbed_body.angular_velocity = payload.angular_velocity
+		var fling_multiplier: float = fling_multiplier_tier2 if payload_tier >= 2 else fling_multiplier_tier1
+		var trolley_mult: float = 1.4 if payload_tier >= 2 else 1.15
+		var tangential_speed: float = (angular_vel * current_rope_length) * fling_multiplier
+
+		release_velocity = tangent_dir * tangential_speed + trolley_velocity * trolley_mult
+
+		# Loft assist: if releasing while swinging upward, add upward fling trajectory
+		if (tangent_dir.y * angular_vel) < 0.0:
+			release_velocity.y -= absf(tangential_speed) * 0.28
+
+		# Tier 2 rocket burst boost in the fling direction
+		if payload_tier >= 2:
+			var fling_dir: Vector2 = release_velocity.normalized()
+			if fling_dir == Vector2.ZERO:
+				fling_dir = Vector2(float(facing_direction), -0.5).normalized()
+			release_velocity += fling_dir * 180.0
+
+		# Ensure minimum satisfying toss forward even if nearly still
+		if release_velocity.length() < 120.0:
+			release_velocity = Vector2(float(facing_direction) * 140.0, -70.0)
+	else:
+		release_velocity = payload.linear_velocity + Vector2(0, 40.0)
+
+	released_ref.linear_velocity = release_velocity
+	released_ref.angular_velocity = swing_angular_velocity * (3.2 if payload_tier >= 2 else 2.4)
 
 	# Remove collision exception
 	if payload:
-		payload.remove_collision_exception_with(grabbed_body)
+		payload.remove_collision_exception_with(released_ref)
 
 	# 3. Clear grabbed reference and carrying state
 	grabbed_body = null
@@ -893,9 +1181,229 @@ func _release_cargo() -> void:
 		if payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 
+	# Fling juice: camera recoil punch + claw squash recoil
+	_trigger_cargo_fling_juice(release_velocity)
+
+
+func _trigger_cargo_fling_juice(release_vel: Vector2) -> void:
+	# Tactile camera punch in throw direction
+	var cam: Camera2D = get_viewport().get_camera_2d()
+	if cam and is_instance_valid(cam):
+		var orig_offset: Vector2 = cam.offset
+		var punch: Vector2 = - release_vel.normalized() * clampf(release_vel.length() * 0.012, 3.0, 9.0)
+		var cam_tween := create_tween()
+		cam_tween.tween_property(cam, "offset", orig_offset + punch, 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		cam_tween.tween_property(cam, "offset", orig_offset, 0.18).set_trans(Tween.TRANS_SINE)
+
+	# Claw pop / recoil upwards
+	if payload_sprite:
+		var claw_tween := create_tween()
+		claw_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		var base_s: Vector2 = payload_sprite.scale
+		claw_tween.tween_property(payload_sprite, "scale", base_s * Vector2(0.85, 1.25), 0.08)
+		claw_tween.tween_property(payload_sprite, "scale", base_s, 0.15)
+
+
+# ==============================================================================
+# WATER INTERACTION, AUDIO & SCOOP SYSTEM
+# ==============================================================================
+func _init_water_audio_player() -> void:
+	_water_audio_player = AudioStreamPlayer2D.new()
+	_water_audio_player.name = "WaterSplashPlayer"
+	_water_audio_player.volume_db = water_splash_volume_db
+	_water_audio_player.max_distance = 2500.0
+	_water_audio_player.attenuation = 1.0
+
+	# Assign custom audio if set, fallback to heavy rain drops if available
+	if water_splash_audio:
+		_water_audio_player.stream = water_splash_audio
+	elif ResourceLoader.exists("res://Sounds/Rain/heavy-rain-drops.wav"):
+		_water_audio_player.stream = load("res://Sounds/Rain/heavy-rain-drops.wav")
+
+	if payload:
+		payload.add_child(_water_audio_player)
+	else:
+		add_child(_water_audio_player)
+
+
+func _play_water_splash_sound(speed: float = 0.0) -> void:
+	if not _water_audio_player:
+		return
+	if _water_splash_cooldown > 0.0:
+		return
+	_water_splash_cooldown = 0.22
+
+	# Dynamic reload if inspector assigned stream
+	if water_splash_audio and _water_audio_player.stream != water_splash_audio:
+		_water_audio_player.stream = water_splash_audio
+
+	if not _water_audio_player.stream:
+		return
+
+	# Natural subtle pitch variation
+	_water_audio_player.pitch_scale = randf_range(0.92, 1.14)
+	var bonus_vol: float = clampf((speed - 120.0) * 0.012, -4.0, 4.0)
+	_water_audio_player.volume_db = water_splash_volume_db + bonus_vol
+	_water_audio_player.play()
+
+
+func _get_fluid_water() -> FluidWater:
+	if _cached_fluid_water and is_instance_valid(_cached_fluid_water):
+		return _cached_fluid_water
+	if is_inside_tree():
+		var tree := get_tree()
+		if not tree:
+			return null
+		var found = tree.get_first_node_in_group("fluid_water")
+		if found is FluidWater:
+			_cached_fluid_water = found as FluidWater
+			return _cached_fluid_water
+		var root := tree.current_scene
+		if root:
+			var fw = root.get_node_or_null("FluidWater")
+			if fw is FluidWater:
+				_cached_fluid_water = fw as FluidWater
+				return _cached_fluid_water
+			var child_fw = root.find_child("FluidWater", true, false)
+			if child_fw is FluidWater:
+				_cached_fluid_water = child_fw as FluidWater
+				return _cached_fluid_water
+	return null
+
+
+func _check_water_interaction(delta: float) -> void:
+	if not enable_water_interaction or not payload:
+		return
+
+	if _water_splash_cooldown > 0.0:
+		_water_splash_cooldown = maxf(0.0, _water_splash_cooldown - delta)
+
+	var fw: FluidWater = _get_fluid_water()
+	if not fw:
+		return
+
+	var payload_pos: Vector2 = payload.global_position
+	var scoop_center: Vector2 = payload_pos + Vector2(0.0, 18.0)
+	var particles_near: int = fw.count_particles_near(scoop_center, water_scoop_radius)
+	var is_in_water: bool = (particles_near > 0)
+
+	# Splash sound on water entry
+	if is_in_water and not _was_in_water_prev_frame:
+		_play_water_splash_sound(payload.linear_velocity.length())
+	_was_in_water_prev_frame = is_in_water
+
+	# CASE 1: Currently carrying water
+	if is_carrying_water:
+		# Update held water position & velocity
+		fw.update_payload_water_pos(scoop_center, payload.linear_velocity)
+
+		# Allow releasing water only after reaching top and releasing down key
+		if is_at_top and not can_release_water:
+			var down_currently_pressed: bool = (
+				(InputMap.has_action("rope_down") and Input.is_action_pressed("rope_down"))
+				or Input.is_key_pressed(KEY_S)
+				or Input.is_key_pressed(KEY_DOWN)
+			)
+			if not down_currently_pressed:
+				can_release_water = true
+		return
+
+	# CASE 2: Empty hook descending into water -> SCOOP / CATCH WATER!
+	if not is_carrying_cargo and not is_carrying_water:
+		if is_descending and not has_resolved_landing and particles_near >= water_min_scoop_particles:
+			var grabbed_count: int = fw.start_payload_water_grab(scoop_center, water_scoop_radius, water_hold_force)
+			if grabbed_count > 0:
+				is_carrying_water = true
+				can_release_water = false
+				has_resolved_landing = true
+				is_descending = false
+
+				_play_water_splash_sound(payload.linear_velocity.length() + 80.0)
+
+				# Play closed claw/hold animation so it holds water like a bucket
+				if payload_sprite and payload_sprite.sprite_frames:
+					if payload_sprite.sprite_frames.has_animation("hold"):
+						payload_sprite.play("hold")
+					elif payload_sprite.sprite_frames.has_animation("default"):
+						payload_sprite.play("default")
+
+				# Water dip ripple juice & gentle screen shake
+				if enable_pickup_shake:
+					_trigger_pickup_screen_shake()
+
+				# Auto-retract back to top with the caught water
+				if auto_retract_after_landing and is_inside_tree():
+					var tree := get_tree()
+					if tree:
+						tree.create_timer(0.2).timeout.connect(func():
+							if not is_at_top:
+								target_rope_length = min_rope_length
+						)
+				return
+
+		# Stirring displacement when moving through water
+		if is_in_water and payload.linear_velocity.length_squared() > 100.0:
+			fw.set_payload_stir(true, scoop_center, water_scoop_radius * 0.9, payload.linear_velocity)
+		else:
+			fw.set_payload_stir(false, Vector2.ZERO, 0.0, Vector2.ZERO)
+
+
+func _release_water() -> void:
+	if not is_carrying_water:
+		return
+
+	var fw: FluidWater = _get_fluid_water()
+	var release_velocity: Vector2 = Vector2.ZERO
+
+	if is_at_top:
+		var swing_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
+		var angular_vel: float = swing_angular_velocity
+		var tangent_dir: Vector2 = Vector2(-swing_dir.y, swing_dir.x)
+
+		var fling_multiplier: float = fling_multiplier_tier2 if payload_tier >= 2 else fling_multiplier_tier1
+		var trolley_mult: float = 1.4 if payload_tier >= 2 else 1.15
+		var tangential_speed: float = (angular_vel * current_rope_length) * fling_multiplier
+
+		release_velocity = tangent_dir * tangential_speed + trolley_velocity * trolley_mult
+
+		# Loft assist: if releasing while swinging upward, add upward fling trajectory
+		if (tangent_dir.y * angular_vel) < 0.0:
+			release_velocity.y -= absf(tangential_speed) * 0.28
+
+		# Tier 2 rocket burst boost in the fling direction
+		if payload_tier >= 2:
+			var fling_dir: Vector2 = release_velocity.normalized()
+			if fling_dir == Vector2.ZERO:
+				fling_dir = Vector2(float(facing_direction), -0.5).normalized()
+			release_velocity += fling_dir * 180.0
+
+		# Ensure minimum satisfying water toss forward
+		if release_velocity.length() < 120.0:
+			release_velocity = Vector2(float(facing_direction) * 140.0, -70.0)
+	else:
+		release_velocity = payload.linear_velocity + Vector2(0, 40.0)
+
+	if fw:
+		fw.fling_held_water(release_velocity)
+
+	# Play water splash / throw sound
+	_play_water_splash_sound(release_velocity.length())
+
+	is_carrying_water = false
+	can_release_water = false
+	waiting_for_down_release = true
+
+	# Open hook back to default animation
+	if payload_sprite and payload_sprite.sprite_frames:
+		if payload_sprite.sprite_frames.has_animation("default"):
+			payload_sprite.play("default")
+
+	# Fling juice: camera recoil punch + claw squash recoil
+	_trigger_cargo_fling_juice(release_velocity)
+
 
 func _on_payload_body_entered(body: Node) -> void:
-	if body is RigidBody2D and body != payload and not is_carrying_cargo:
+	if body is RigidBody2D and body != payload and not is_carrying_cargo and not is_carrying_water:
 		has_caught_object = true
 		if is_descending and not has_resolved_landing:
 			call_deferred("_resolve_landing")
@@ -907,7 +1415,7 @@ func _on_payload_body_entered(body: Node) -> void:
 func _is_touching_grabbable_object() -> bool:
 	if not payload:
 		return false
-	if is_carrying_cargo:
+	if is_carrying_cargo or is_carrying_water:
 		return false
 
 	# 1. Physics collision contacts
@@ -956,6 +1464,11 @@ func _find_touching_grabbable_body() -> RigidBody2D:
 	if is_inside_tree():
 		var tree := get_tree()
 		if tree:
+			for node in tree.get_nodes_in_group("rock"):
+				if node is RigidBody2D and node != payload and node != grabbed_body:
+					var diff: Vector2 = node.global_position - payload.global_position
+					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+						return node
 			for node in tree.get_nodes_in_group("cargo"):
 				if node is RigidBody2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
@@ -985,7 +1498,9 @@ func _on_payload_animation_finished() -> void:
 
 	if current_anim == &"catch_start":
 		# When catch_start finishes, immediately transition to catch_loop
-		if is_descending and not has_resolved_landing:
+		if payload_tier >= 2 and payload_sprite.sprite_frames.has_animation("better_catch"):
+			payload_sprite.play("better_catch")
+		elif is_descending and not has_resolved_landing:
 			if payload_sprite.sprite_frames.has_animation("catch_loop"):
 				payload_sprite.play("catch_loop")
 			elif payload_sprite.sprite_frames.has_animation("catch"):
@@ -993,6 +1508,9 @@ func _on_payload_animation_finished() -> void:
 		elif not is_descending:
 			if payload_sprite.sprite_frames.has_animation("default"):
 				payload_sprite.play("default")
+	elif current_anim == &"better_catch":
+		if is_descending and not has_resolved_landing:
+			payload_sprite.play("better_catch")
 	elif current_anim == &"hold":
 		is_descending = false
 		# As requested: after hold animation finishes, immediately play default animation
@@ -1021,10 +1539,11 @@ func _start_turn() -> void:
 	is_turning = true
 	_is_turn_reversing = false
 
-	# Apply turn swing impulse (rope swings dynamically as the crane flips)
-	swing_angular_velocity += -float(facing_direction) * turn_swing_kick
+	# Apply massive turn swing impulse in the turn direction
+	var kick: float = turn_swing_kick_tier2 if payload_tier >= 2 else turn_swing_kick_tier1
+	swing_angular_velocity += float(facing_direction) * kick
 
-	# Smoothly tween trolley to the exact opposite position across mast within 1 second
+	# Smoothly tween trolley to the exact opposite position across mast within 0.38 second
 	if _trolley_tween and _trolley_tween.is_valid():
 		_trolley_tween.kill()
 
@@ -1037,7 +1556,7 @@ func _start_turn() -> void:
 
 		_trolley_tween = create_tween()
 		_trolley_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		_trolley_tween.tween_property(trolley_pivot, "position:x", target_x, 0.4)
+		_trolley_tween.tween_property(trolley_pivot, "position:x", target_x, 0.38)
 		_trolley_tween.tween_callback(func():
 			if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
 				trolley_sprite.play("default")
@@ -1063,8 +1582,9 @@ func _on_crane_body_animation_finished() -> void:
 		_is_turn_reversing = true
 		facing_direction *= -1
 		_apply_flip_state(float(facing_direction))
-		# Additional swing impulse as the crane boom whips around
-		swing_angular_velocity += -float(facing_direction) * (turn_swing_kick * 0.45)
+		# Controlled swing impulse as the crane boom completes the turn
+		var phase2_kick: float = (turn_swing_kick_tier2 if payload_tier >= 2 else turn_swing_kick_tier1) * 0.6
+		swing_angular_velocity += -float(facing_direction) * phase2_kick
 
 		if crane_body_sprite and crane_body_sprite.sprite_frames and crane_body_sprite.sprite_frames.has_animation("turn"):
 			var last_frame: int = crane_body_sprite.sprite_frames.get_frame_count("turn") - 1
@@ -1233,3 +1753,112 @@ func _start_sprite_idle_shake(target: CanvasItem, index: int) -> void:
 	tween.tween_property(target, prop_name, base_vec + s3, step_dur * 0.95)
 	tween.tween_property(target, prop_name, base_vec + s4, step_dur * 1.1)
 	tween.tween_property(target, prop_name, base_vec, step_dur * 1.0)
+
+
+# ==============================================================================
+# 12. PAYLOAD TIER UPGRADES & STONE WALL DEPOSIT
+# ==============================================================================
+func set_payload_tier(tier: int) -> void:
+	payload_tier = clampi(tier, 1, 2)
+	if payload_tier == 2:
+		trolley_speed = trolley_speed_tier2
+		rope_winch_speed = rope_winch_speed_tier2
+		swing_max_angle_deg = 58.0
+		pendulum_gravity = 740.0
+		pendulum_damping = 1.65
+		swing_inertia_scale = swing_inertia_tier2
+		movement_swing_strength = movement_swing_strength_tier2
+		turn_swing_kick = turn_swing_kick_tier2
+		print("[Crane] Payload Tier 2 Aktif! (Trolley: ", trolley_speed, "px/s, Winch: ", rope_winch_speed, "px/s, Turn Kick: ", turn_swing_kick, ").")
+	else:
+		trolley_speed = trolley_speed_tier1
+		rope_winch_speed = rope_winch_speed_tier1
+		swing_max_angle_deg = 50.0
+		pendulum_gravity = 780.0
+		pendulum_damping = 1.8
+		swing_inertia_scale = swing_inertia_tier1
+		movement_swing_strength = movement_swing_strength_tier1
+		turn_swing_kick = turn_swing_kick_tier1
+		if _rocket_visual:
+			_rocket_visual.set_firing(false)
+		print("[Crane] Payload Tier 1 Standart (Trolley: ", trolley_speed, "px/s, Winch: ", rope_winch_speed, "px/s, Turn Kick: ", turn_swing_kick, ").")
+
+
+func upgrade_payload() -> bool:
+	if payload_tier >= 2:
+		return false
+	set_payload_tier(2)
+	if payload_sprite:
+		var pop := create_tween()
+		pop.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		pop.tween_property(payload_sprite, "scale", payload_sprite.scale * 1.35, 0.15)
+		pop.tween_property(payload_sprite, "scale", payload_sprite.scale, 0.2)
+	return true
+
+
+func _check_and_deposit_to_stone_wall() -> bool:
+	if not grabbed_body or not is_instance_valid(grabbed_body):
+		return false
+	var tree := get_tree()
+	if not tree:
+		return false
+	var wall = tree.get_first_node_in_group("stone_wall")
+	if not wall or not is_instance_valid(wall) or not wall.has_method("place_rock"):
+		return false
+
+	var wall_top_y_world: float = wall.global_position.y
+	if wall.has_method("get_wall_top_y_local"):
+		wall_top_y_world += wall.get_wall_top_y_local() * wall.scale.y
+
+	var diff: Vector2 = grabbed_body.global_position - Vector2(wall.global_position.x, wall_top_y_world)
+	# Check horizontal alignment within wall width and near or slightly above the rising top surface
+	if absf(diff.x) <= 75.0 * wall.scale.x and diff.y >= -50.0 and diff.y <= 100.0:
+		var rock_to_place: RigidBody2D = grabbed_body
+		_release_cargo()
+		wall.place_rock(rock_to_place)
+		return true
+	return false
+
+
+func _trigger_pickup_screen_shake() -> void:
+	if not enable_pickup_shake:
+		return
+
+	var cam: Camera2D = get_viewport().get_camera_2d()
+	if cam and is_instance_valid(cam):
+		var orig_offset: Vector2 = cam.offset
+		var tween := create_tween()
+		var steps: int = 5
+		var step_dur: float = pickup_shake_duration / float(steps)
+		for i in range(steps):
+			var damp: float = 1.0 - (float(i) / float(steps))
+			var shake_vec := Vector2(
+				randf_range(-pickup_shake_intensity, pickup_shake_intensity) * damp,
+				randf_range(-pickup_shake_intensity * 0.7, pickup_shake_intensity * 0.7) * damp
+			)
+			tween.tween_property(cam, "offset", orig_offset + shake_vec, step_dur).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(cam, "offset", orig_offset, step_dur * 0.5)
+	else:
+		# Fallback if camera is not active: shake the scene root
+		var root_node := get_tree().current_scene
+		if root_node and is_instance_valid(root_node):
+			var orig_pos: Vector2 = root_node.position
+			var tween := create_tween()
+			var steps: int = 5
+			var step_dur: float = pickup_shake_duration / float(steps)
+			for i in range(steps):
+				var damp: float = 1.0 - (float(i) / float(steps))
+				var shake_vec := Vector2(
+					randf_range(-pickup_shake_intensity, pickup_shake_intensity) * damp,
+					randf_range(-pickup_shake_intensity * 0.7, pickup_shake_intensity * 0.7) * damp
+				)
+				tween.tween_property(root_node, "position", orig_pos + shake_vec, step_dur).set_trans(Tween.TRANS_SINE)
+			tween.tween_property(root_node, "position", orig_pos, step_dur * 0.5)
+
+	# Tactile squash-and-stretch on the hook claw itself for extra impact feel
+	if payload_sprite:
+		var grab_tween := create_tween()
+		grab_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		var base_s: Vector2 = payload_sprite.scale
+		grab_tween.tween_property(payload_sprite, "scale", base_s * Vector2(1.15, 0.88), 0.08)
+		grab_tween.tween_property(payload_sprite, "scale", base_s, 0.12)

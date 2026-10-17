@@ -9,12 +9,24 @@
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_water"]
 shader = ExtResource("4_shader")
-shader_parameter/water_color = Color(0.04, 0.62, 0.88, 0.82)
-shader_parameter/deep_water_color = Color(0.01, 0.24, 0.52, 0.94)
-shader_parameter/abyss_water_color = Color(0.005, 0.08, 0.26, 0.98)
+shader_parameter/water_color = Color(0.039215688, 0.61960787, 0.8784314, 0.6039216)
+shader_parameter/deep_water_color = Color(0.011764706, 0.23921569, 0.52156866, 0.64705884)
+shader_parameter/abyss_water_color = Color(0.003921569, 0.078431375, 0.25882354, 0.6862745)
 shader_parameter/foam_color = Color(0.92, 0.98, 1, 0.96)
 shader_parameter/threshold = 0.62
+shader_parameter/surface_flatness = 3.5
 shader_parameter/foam_thickness = 0.08
+shader_parameter/wave_speed = 2.0
+shader_parameter/wave_amount = 0.02
+shader_parameter/caustic_strength = 0.12
+shader_parameter/caustic_scale = 160.0
+shader_parameter/sun_ray_strength = 0.07
+shader_parameter/refraction_strength = 0.006
+shader_parameter/chromatic_split = 0.003
+shader_parameter/enable_bubbles = true
+shader_parameter/bubble_amount = 0.4
+shader_parameter/bubble_scale = 240.0
+shader_parameter/bubble_speed = 0.75
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_icon"]
 shader = ExtResource("5_pointer_sh")

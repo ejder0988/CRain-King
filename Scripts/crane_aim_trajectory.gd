@@ -4,6 +4,7 @@ class_name CraneAimTrajectory
 ## CraneAimTrajectory: Renders dynamic animated energy beads (dotted laser line)
 ## and a sci-fi target reticle / lock-on crosshair for the crane aim system.
 
+@export var show_dots: bool = false ## Set to true if dotted laser trail should be drawn (disabled per user request)
 @export var dot_count: int = 7
 @export var dot_radius: float = 3.5
 @export var dot_spacing: float = 46.0
@@ -32,6 +33,9 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+var is_rocket_tier: bool = false
+
+
 func update_aim(
 	origin: Vector2,
 	direction: Vector2,
@@ -39,7 +43,8 @@ func update_aim(
 	locked: bool,
 	target_global_pos: Vector2,
 	color: Color,
-	active: bool
+	active: bool,
+	rocket_tier: bool = false
 ) -> void:
 	is_active = active
 	aim_origin_local = to_local(origin)
@@ -48,6 +53,7 @@ func update_aim(
 	is_locked_on = locked
 	locked_target_local = to_local(target_global_pos) if locked else aim_origin_local + aim_dir * distance
 	current_color = color
+	is_rocket_tier = rocket_tier
 
 	if is_active and _fade_alpha < 1.0 and (_burst_tween == null or not _burst_tween.is_running()):
 		_fade_alpha = move_toward(_fade_alpha, 1.0, 4.0 * get_process_delta_time())
@@ -80,26 +86,27 @@ func _draw() -> void:
 	var glow_col := draw_col
 	glow_col.a *= 0.35
 
-	# 1. DRAW STREAMING ENERGY BEADS (Marching dotted laser)
-	var flow_offset: float = fmod(_flow_timer, dot_spacing)
-	var max_dist: float = minf(aim_distance, (locked_target_local - aim_origin_local).length() - 20.0)
+	# 1. STREAMING ENERGY BEADS (Disabled per user request: dots removed, target reticle & crosshairs kept)
+	if show_dots:
+		var flow_offset: float = fmod(_flow_timer, dot_spacing)
+		var max_dist: float = minf(aim_distance, (locked_target_local - aim_origin_local).length() - 20.0)
 
-	var curr_d: float = flow_offset + 25.0
-	while curr_d < max_dist:
-		var dot_pos: Vector2 = aim_origin_local + aim_dir * curr_d
-		var dist_factor: float = 1.0 - (curr_d / maxf(aim_distance, 1.0)) * 0.4
-		var r: float = dot_radius * dist_factor
+		var curr_d: float = flow_offset + 25.0
+		while curr_d < max_dist:
+			var dot_pos: Vector2 = aim_origin_local + aim_dir * curr_d
+			var dist_factor: float = 1.0 - (curr_d / maxf(aim_distance, 1.0)) * 0.4
+			var r: float = dot_radius * dist_factor
 
-		# Subtle pulse
-		var pulse: float = 1.0 + sin(_flow_timer * 0.06 + curr_d * 0.05) * 0.2
-		r *= pulse
+			# Subtle pulse
+			var pulse: float = 1.0 + sin(_flow_timer * 0.06 + curr_d * 0.05) * 0.2
+			r *= pulse
 
-		# Outer soft glow
-		draw_circle(dot_pos, r * 2.0, glow_col)
-		# Core bright bead
-		draw_circle(dot_pos, r, draw_col)
+			# Outer soft glow
+			draw_circle(dot_pos, r * 2.0, glow_col)
+			# Core bright bead
+			draw_circle(dot_pos, r, draw_col)
 
-		curr_d += dot_spacing
+			curr_d += dot_spacing
 
 	# 2. DRAW TARGET RETICLE / LANDING CROSSHAIR
 	var reticle_center: Vector2 = locked_target_local
@@ -115,27 +122,51 @@ func _draw() -> void:
 
 
 func _draw_lockon_reticle(center: Vector2, radius: float, col: Color, glow: Color) -> void:
-	# Outer rotating diamond / brackets
-	var corners: int = 4
-	var step: float = TAU / float(corners)
-	var bracket_len: float = radius * 0.45
+	if is_rocket_tier:
+		# Tier 2: Advanced Guided Rocket Tracking HUD
+		var rocket_col := Color(1.0, 0.72, 0.15, col.a) # High-tech fiery gold/amber
+		var rocket_glow := Color(1.0, 0.45, 0.05, glow.a * 0.9)
+		var r_outer: float = radius * 1.35
 
-	# Draw glow circle
-	draw_arc(center, radius + 2.0, 0.0, TAU, 24, glow, 2.0)
-	draw_arc(center, radius, 0.0, TAU, 24, col, 1.5)
+		# Outer pulse tracking ring
+		draw_arc(center, r_outer, 0.0, TAU, 28, rocket_glow, 2.5)
+		draw_arc(center, r_outer, 0.0, TAU, 28, rocket_col, 1.5)
 
-	# 4 Corner Target Brackets
-	for i in range(corners):
-		var a: float = _reticle_angle + float(i) * step
-		var corner_pt: Vector2 = center + Vector2(cos(a), sin(a)) * radius
+		# Inner rotating missile bracket ring
+		var corners: int = 4
+		var step: float = TAU / float(corners)
+		var bracket_len: float = radius * 0.55
+		for i in range(corners):
+			var a: float = _reticle_angle + float(i) * step
+			var corner_pt: Vector2 = center + Vector2(cos(a), sin(a)) * radius
+			var t1: Vector2 = corner_pt + Vector2(-sin(a), cos(a)) * bracket_len
+			var t2: Vector2 = corner_pt + Vector2(sin(a), -cos(a)) * bracket_len
+			draw_line(corner_pt, t1, rocket_col, 2.4)
+			draw_line(corner_pt, t2, rocket_col, 2.4)
 
-		var t1: Vector2 = corner_pt + Vector2(-sin(a), cos(a)) * bracket_len
-		var t2: Vector2 = corner_pt + Vector2(sin(a), -cos(a)) * bracket_len
-		draw_line(corner_pt, t1, col, 2.0)
-		draw_line(corner_pt, t2, col, 2.0)
+		# Center rocket target cross
+		var cross_arm: float = radius * 0.35
+		draw_line(center + Vector2(-cross_arm, 0), center + Vector2(cross_arm, 0), rocket_col, 1.5)
+		draw_line(center + Vector2(0, -cross_arm), center + Vector2(0, cross_arm), rocket_col, 1.5)
+		draw_circle(center, 3.5, rocket_col)
+	else:
+		# Standard Tier 1 Target Reticle
+		var corners: int = 4
+		var step: float = TAU / float(corners)
+		var bracket_len: float = radius * 0.45
 
-	# Center lock dot
-	draw_circle(center, 3.0, col)
+		draw_arc(center, radius + 2.0, 0.0, TAU, 24, glow, 2.0)
+		draw_arc(center, radius, 0.0, TAU, 24, col, 1.5)
+
+		for i in range(corners):
+			var a: float = _reticle_angle + float(i) * step
+			var corner_pt: Vector2 = center + Vector2(cos(a), sin(a)) * radius
+			var t1: Vector2 = corner_pt + Vector2(-sin(a), cos(a)) * bracket_len
+			var t2: Vector2 = corner_pt + Vector2(sin(a), -cos(a)) * bracket_len
+			draw_line(corner_pt, t1, col, 2.0)
+			draw_line(corner_pt, t2, col, 2.0)
+
+		draw_circle(center, 3.0, col)
 
 
 func _draw_landing_crosshair(center: Vector2, radius: float, col: Color) -> void:

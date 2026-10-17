@@ -60,6 +60,17 @@ var _particle_material: CanvasItemMaterial
 
 var _collision_exceptions: Array[RID] = []
 
+# Payload attraction & scoop state:
+var payload_holding_water: bool = false
+var payload_attractor_pos: Vector2 = Vector2.ZERO
+var payload_attractor_radius: float = 75.0
+var payload_attractor_force: float = 750.0
+var payload_linear_vel: Vector2 = Vector2.ZERO
+var payload_stir_active: bool = false
+var payload_stir_pos: Vector2 = Vector2.ZERO
+var payload_stir_radius: float = 65.0
+var _held_particles: Array[RID] = []
+
 
 func _ready() -> void:
 	add_to_group("fluid_water")
@@ -201,10 +212,38 @@ func _physics_process(_delta: float) -> void:
 			local_trans.origin -= global_position
 			RenderingServer.canvas_item_set_transform(img, local_trans)
 
+			var force_applied: bool = false
+
+			# 1. Mouse pointer attraction
 			if mouse_down and enable_pointer and mouse_pos.distance_to(world_pos) < 60.0 * icon_scale:
 				var dir := (mouse_pos - world_pos).normalized()
 				PhysicsServer2D.body_set_constant_force(object, dir * attrForce)
-			else:
+				force_applied = true
+			# 2. Crane Payload water holding (attraction toward scoop bucket)
+			elif payload_holding_water and payload_attractor_pos != Vector2.ZERO:
+				var d_payload: float = payload_attractor_pos.distance_to(world_pos)
+				if _held_particles.has(object) or d_payload < payload_attractor_radius:
+					if not _held_particles.has(object) and _held_particles.size() < 65:
+						_held_particles.append(object)
+					var to_payload: Vector2 = payload_attractor_pos - world_pos
+					var dir := to_payload.normalized()
+					var pull: float = clampf(to_payload.length() * 22.0, 240.0, payload_attractor_force)
+					PhysicsServer2D.body_set_constant_force(object, dir * pull)
+					# Velocity coupling: ensure held water follows rapid winch and swing motions seamlessly
+					var cur_v: Vector2 = PhysicsServer2D.body_get_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+					var target_v: Vector2 = payload_linear_vel + dir * minf(d_payload * 8.0, 420.0)
+					PhysicsServer2D.body_set_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, cur_v.lerp(target_v, 0.4))
+					force_applied = true
+			# 3. Crane Payload water stirring & displacement
+			elif payload_stir_active and payload_stir_pos != Vector2.ZERO:
+				var d_stir: float = payload_stir_pos.distance_to(world_pos)
+				if d_stir < payload_stir_radius:
+					var push_dir: Vector2 = (world_pos - payload_stir_pos).normalized()
+					var push_force: Vector2 = push_dir * 180.0 + payload_linear_vel * 0.4
+					PhysicsServer2D.body_set_constant_force(object, push_force)
+					force_applied = true
+
+			if not force_applied:
 				PhysicsServer2D.body_set_constant_force(object, Vector2.ZERO)
 
 
@@ -310,3 +349,61 @@ func get_water_surface_y_in_range(min_x: float, max_x: float, min_count: int = 3
 				if p.y < lowest_y:
 					lowest_y = p.y
 	return lowest_y if count >= min_count else INF
+
+
+## Returns how many water particles are currently within radius of the given world position
+func count_particles_near(pos: Vector2, radius: float) -> int:
+	var count: int = 0
+	var ps := PhysicsServer2D
+	for pair in objects:
+		var object: RID = pair[0]
+		if object.is_valid():
+			var trans: Transform2D = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if pos.distance_to(trans.origin) < radius:
+				count += 1
+	return count
+
+
+## Captures and locks nearby water particles into the payload bucket
+func start_payload_water_grab(center: Vector2, radius: float = 75.0, force: float = 750.0) -> int:
+	payload_holding_water = true
+	payload_attractor_pos = center
+	payload_attractor_radius = radius
+	payload_attractor_force = force
+	_held_particles.clear()
+	var ps := PhysicsServer2D
+	for pair in objects:
+		var object: RID = pair[0]
+		if object.is_valid():
+			var trans: Transform2D = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if center.distance_to(trans.origin) < radius:
+				_held_particles.append(object)
+				if _held_particles.size() >= 65:
+					break
+	return _held_particles.size()
+
+
+## Continuously updates the holding position and momentum of held water
+func update_payload_water_pos(center: Vector2, vel: Vector2) -> void:
+	payload_attractor_pos = center
+	payload_linear_vel = vel
+
+
+## Displaces/stirs water around payload when moving through it
+func set_payload_stir(active: bool, pos: Vector2, radius: float, vel: Vector2) -> void:
+	payload_stir_active = active
+	payload_stir_pos = pos
+	payload_stir_radius = radius
+	payload_linear_vel = vel
+
+
+## Flings and releases all held water particles with dynamic launch velocity
+func fling_held_water(launch_vel: Vector2) -> void:
+	payload_holding_water = false
+	var ps := PhysicsServer2D
+	for obj in _held_particles:
+		if obj.is_valid():
+			var spread := Vector2(randf_range(-45.0, 45.0), randf_range(-45.0, 45.0))
+			ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, launch_vel + spread)
+			ps.body_set_constant_force(obj, Vector2.ZERO)
+	_held_particles.clear()

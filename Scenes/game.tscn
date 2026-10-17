@@ -15,6 +15,7 @@
 [ext_resource type="Texture2D" uid="uid://bm4q5gfo4v08q" path="res://Sprites/Background/grass.png" id="7_vm72l"]
 [ext_resource type="Texture2D" uid="uid://wiij823axt2k" path="res://Sprites/beacon_turn_2.png" id="8_bturn2"]
 [ext_resource type="Texture2D" uid="uid://bs5sgxhqc486a" path="res://Sprites/beacon_turn_3.png" id="9_bturn3"]
+[ext_resource type="AudioStream" uid="uid://bhdhsrwcf05yk" path="res://Sounds/Rain/water_splash.mp3" id="10_8m3t6"]
 [ext_resource type="Texture2D" uid="uid://dsjuko3h5l668" path="res://Sprites/Crane/crane_part.png" id="10_rku1e"]
 [ext_resource type="Shader" uid="uid://bdyxgi7lrtr1i" path="res://Shaders/outline.gdshader" id="11_1phco"]
 [ext_resource type="Texture2D" uid="uid://c1oscof7u4a3h" path="res://Sprites/Crane/crane_bucket.png" id="11_rku1e"]
@@ -28,6 +29,10 @@
 [ext_resource type="Texture2D" uid="uid://ddho0o83i5h6i" path="res://Sprites/rock.png" id="21_fkdbe"]
 [ext_resource type="Texture2D" uid="uid://caixcmrgyy7dp" path="res://Sprites/houses.png" id="25_22asu"]
 [ext_resource type="Script" uid="uid://c5dy71qimwnl6" path="res://Scripts/houses_manager.gd" id="26_houses"]
+[ext_resource type="PackedScene" uid="uid://dvscq4k304yke" path="res://Scenes/stone_wall.tscn" id="27_stonewall"]
+[ext_resource type="Script" uid="uid://bkum8dlybk6f7" path="res://Scripts/wind_effect.gd" id="28_wind"]
+[ext_resource type="Script" uid="uid://behgarnuu1y13" path="res://Scripts/house.gd" id="31_oeip8"]
+[ext_resource type="Texture2D" uid="uid://c6af0t7qes87f" path="res://Sprites/DestroyHouse.png" id="32_ese38"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ewbju"]
 size = Vector2(306.575, 265.5)
@@ -243,7 +248,7 @@ a = Vector2(507.57446, 86.80852)
 b = Vector2(477.19153, 85.531906)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_7nbq1"]
-a = Vector2(503.23407, 80.93616)
+a = Vector2(502.7234, 86.29787)
 b = Vector2(503.23407, -27.063843)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_base"]
@@ -391,6 +396,14 @@ shader = ExtResource("11_1phco")
 shader_parameter/line_color = Color(0, 0, 0, 1)
 shader_parameter/line_thickness = 1.0
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_7t8sx"]
+atlas = ExtResource("11_rku1e")
+region = Rect2(192, 0, 64, 64)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6xvgv"]
+atlas = ExtResource("21_81klo")
+region = Rect2(192, 0, 64, 64)
+
 [sub_resource type="AtlasTexture" id="AtlasTexture_7nbq1"]
 atlas = ExtResource("11_rku1e")
 region = Rect2(64, 0, 64, 64)
@@ -398,10 +411,6 @@ region = Rect2(64, 0, 64, 64)
 [sub_resource type="AtlasTexture" id="AtlasTexture_exi56"]
 atlas = ExtResource("11_rku1e")
 region = Rect2(128, 0, 64, 64)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_7t8sx"]
-atlas = ExtResource("11_rku1e")
-region = Rect2(192, 0, 64, 64)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_iivbl"]
 atlas = ExtResource("11_rku1e")
@@ -423,13 +432,15 @@ region = Rect2(192, 0, 64, 64)
 animations = [{
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_7nbq1")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_exi56")
-}, {
-"duration": 1.0,
 "texture": SubResource("AtlasTexture_7t8sx")
+}],
+"loop": 1,
+"name": &"better_catch",
+"speed": 12.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6xvgv")
 }],
 "loop": 0,
 "name": &"catch",
@@ -487,6 +498,7 @@ radius = 27.5
 height = 84.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_fkdbe"]
+radius = 34.0147
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_g4v7s"]
 shader = ExtResource("15_nb51f")
@@ -497,12 +509,59 @@ shader_parameter/center_pos = Vector2(0.5, 0)
 shader_parameter/position_impact = 0.75
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_yf5fn"]
+size = Vector2(17.617035, 10.97876)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_fnkle"]
 atlas = ExtResource("25_22asu")
 region = Rect2(5, 47, 22, 17)
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_8lpvs"]
+atlas = ExtResource("32_ese38")
+region = Rect2(0, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_x6jpx"]
+atlas = ExtResource("32_ese38")
+region = Rect2(48, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_sjh24"]
+atlas = ExtResource("32_ese38")
+region = Rect2(96, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_k5jl5"]
+atlas = ExtResource("32_ese38")
+region = Rect2(144, 0, 48, 48)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_nqk4g"]
+atlas = ExtResource("32_ese38")
+region = Rect2(192, 0, 48, 48)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_3gngh"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_8lpvs")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_x6jpx")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_sjh24")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_k5jl5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_nqk4g")
+}],
+"loop": 0,
+"name": &"destroy",
+"speed": 10.0
+}]
+
 [node name="game" type="Node2D" unique_id=1131706611]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=987654321]
+position = Vector2(960, 540)
 
 [node name="Background" type="Node2D" parent="." unique_id=842219125]
 position = Vector2(15, 0)
@@ -552,71 +611,147 @@ text = "Q"
 [node name="AnimationPlayer" type="AnimationPlayer" parent="Background/LandLayer2/factory" unique_id=910190501]
 libraries/ = SubResource("AnimationLibrary_85qyi")
 
-[node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=944963635]
+[node name="GroundCollions" type="StaticBody2D" parent="." unique_id=944963635]
 position = Vector2(963, 782.00006)
 scale = Vector2(3.9166667, 3.9166667)
 
-[node name="Ground" type="Sprite2D" parent="StaticBody2D" unique_id=1423934013]
+[node name="Ground" type="Sprite2D" parent="GroundCollions" unique_id=1423934013]
 position = Vector2(-0.76595354, 5.9361467)
 scale = Vector2(0.9574467, 0.988475)
 texture = ExtResource("2_nnt18")
 
-[node name="GrassAnimatedSprite2D" type="AnimatedSprite2D" parent="StaticBody2D/Ground" unique_id=1514851334]
+[node name="GrassAnimatedSprite2D" type="AnimatedSprite2D" parent="GroundCollions/Ground" unique_id=1514851334]
 position = Vector2(-66.13333, 15.442537)
 scale = Vector2(1.0444447, 1.0208147)
 sprite_frames = SubResource("SpriteFrames_d0u6y")
 autoplay = "default"
 
-[node name="GrassAnimatedSprite2D2" type="AnimatedSprite2D" parent="StaticBody2D/Ground" unique_id=676099757]
+[node name="GrassAnimatedSprite2D2" type="AnimatedSprite2D" parent="GroundCollions/Ground" unique_id=676099757]
 position = Vector2(17.066654, 15.442537)
 scale = Vector2(1.0444447, 1.0208147)
 sprite_frames = SubResource("SpriteFrames_d0u6y")
 autoplay = "default"
 
-[node name="GrassAnimatedSprite2D3" type="AnimatedSprite2D" parent="StaticBody2D/Ground" unique_id=823810138]
+[node name="GrassAnimatedSprite2D3" type="AnimatedSprite2D" parent="GroundCollions/Ground" unique_id=823810138]
 position = Vector2(101.06667, 15.442537)
 scale = Vector2(1.0444447, 1.0208147)
 sprite_frames = SubResource("SpriteFrames_d0u6y")
 autoplay = "default"
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D" unique_id=957904783]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="GroundCollions" unique_id=957904783]
 position = Vector2(29.617004, 3.5744524)
 shape = SubResource("SegmentShape2D_57qmd")
 
-[node name="CollisionShape2D8" type="CollisionShape2D" parent="StaticBody2D" unique_id=1620746927]
+[node name="CollisionShape2D8" type="CollisionShape2D" parent="GroundCollions" unique_id=1620746927]
 position = Vector2(-154.21277, 1.5318995)
 shape = SubResource("SegmentShape2D_exi56")
 
-[node name="CollisionShape2D9" type="CollisionShape2D" parent="StaticBody2D" unique_id=1594591180]
+[node name="CollisionShape2D9" type="CollisionShape2D" parent="GroundCollions" unique_id=1594591180]
 position = Vector2(-175.14893, 8.936154)
 shape = SubResource("SegmentShape2D_7t8sx")
 
-[node name="CollisionShape2D10" type="CollisionShape2D" parent="StaticBody2D" unique_id=1426561982]
+[node name="CollisionShape2D10" type="CollisionShape2D" parent="GroundCollions" unique_id=1426561982]
 position = Vector2(-175.14893, 2.5531914)
 shape = SubResource("SegmentShape2D_mg4q0")
 
-[node name="CollisionShape2D2" type="CollisionShape2D" parent="StaticBody2D" unique_id=1824992915]
+[node name="CollisionShape2D2" type="CollisionShape2D" parent="GroundCollions" unique_id=1824992915]
 position = Vector2(124.85104, 27.829771)
 shape = SubResource("SegmentShape2D_yf5fn")
 
-[node name="CollisionShape2D3" type="CollisionShape2D" parent="StaticBody2D" unique_id=1036217469]
+[node name="CollisionShape2D3" type="CollisionShape2D" parent="GroundCollions" unique_id=1036217469]
 position = Vector2(138.38297, 10.468066)
 shape = SubResource("SegmentShape2D_nnt18")
 
-[node name="CollisionShape2D4" type="CollisionShape2D" parent="StaticBody2D" unique_id=293140187]
+[node name="CollisionShape2D4" type="CollisionShape2D" parent="GroundCollions" unique_id=293140187]
 position = Vector2(126.8936, 14.808495)
 shape = SubResource("SegmentShape2D_ewbju")
 
-[node name="CollisionShape2D5" type="CollisionShape2D" parent="StaticBody2D" unique_id=847514980]
+[node name="CollisionShape2D5" type="CollisionShape2D" parent="GroundCollions" unique_id=847514980]
 position = Vector2(136.08508, 10.212749)
 shape = SubResource("SegmentShape2D_85qyi")
 
-[node name="CollisionShape2D6" type="CollisionShape2D" parent="StaticBody2D" unique_id=275872876]
+[node name="CollisionShape2D6" type="CollisionShape2D" parent="GroundCollions" unique_id=275872876]
 position = Vector2(-248.42554, -34.212784)
 shape = SubResource("SegmentShape2D_iivbl")
 
-[node name="CollisionShape2D7" type="CollisionShape2D" parent="StaticBody2D" unique_id=2132755017]
+[node name="CollisionShape2D11" type="CollisionShape2D" parent="GroundCollions" unique_id=188478654]
+position = Vector2(30.382977, 6.382963)
+shape = SubResource("SegmentShape2D_57qmd")
+
+[node name="CollisionShape2D12" type="CollisionShape2D" parent="GroundCollions" unique_id=1205621950]
+position = Vector2(-153.4468, 4.34041)
+shape = SubResource("SegmentShape2D_exi56")
+
+[node name="CollisionShape2D13" type="CollisionShape2D" parent="GroundCollions" unique_id=1005929543]
+position = Vector2(-174.38295, 11.744665)
+shape = SubResource("SegmentShape2D_7t8sx")
+
+[node name="CollisionShape2D14" type="CollisionShape2D" parent="GroundCollions" unique_id=293486053]
+position = Vector2(-174.38295, 5.361702)
+shape = SubResource("SegmentShape2D_mg4q0")
+
+[node name="CollisionShape2D15" type="CollisionShape2D" parent="GroundCollions" unique_id=1948761353]
+position = Vector2(125.61702, 30.638283)
+shape = SubResource("SegmentShape2D_yf5fn")
+
+[node name="CollisionShape2D16" type="CollisionShape2D" parent="GroundCollions" unique_id=1965523463]
+position = Vector2(139.14894, 13.276577)
+shape = SubResource("SegmentShape2D_nnt18")
+
+[node name="CollisionShape2D17" type="CollisionShape2D" parent="GroundCollions" unique_id=1542197107]
+position = Vector2(127.65958, 17.617006)
+shape = SubResource("SegmentShape2D_ewbju")
+
+[node name="CollisionShape2D18" type="CollisionShape2D" parent="GroundCollions" unique_id=1098423142]
+position = Vector2(136.85106, 13.021259)
+shape = SubResource("SegmentShape2D_85qyi")
+
+[node name="CollisionShape2D19" type="CollisionShape2D" parent="GroundCollions" unique_id=931530118]
+position = Vector2(-247.65956, -31.404272)
+shape = SubResource("SegmentShape2D_iivbl")
+
+[node name="CollisionShape2D20" type="CollisionShape2D" parent="GroundCollions" unique_id=624261737]
+position = Vector2(30.382961, 9.191474)
+shape = SubResource("SegmentShape2D_57qmd")
+
+[node name="CollisionShape2D21" type="CollisionShape2D" parent="GroundCollions" unique_id=1790796588]
+position = Vector2(-153.44681, 7.148921)
+shape = SubResource("SegmentShape2D_exi56")
+
+[node name="CollisionShape2D22" type="CollisionShape2D" parent="GroundCollions" unique_id=417831913]
+position = Vector2(-174.38297, 14.553176)
+shape = SubResource("SegmentShape2D_7t8sx")
+
+[node name="CollisionShape2D23" type="CollisionShape2D" parent="GroundCollions" unique_id=2145383243]
+position = Vector2(-174.38297, 8.170213)
+shape = SubResource("SegmentShape2D_mg4q0")
+
+[node name="CollisionShape2D24" type="CollisionShape2D" parent="GroundCollions" unique_id=2035586217]
+position = Vector2(125.617004, 33.446793)
+shape = SubResource("SegmentShape2D_yf5fn")
+
+[node name="CollisionShape2D25" type="CollisionShape2D" parent="GroundCollions" unique_id=1793517734]
+position = Vector2(139.14893, 16.085087)
+shape = SubResource("SegmentShape2D_nnt18")
+
+[node name="CollisionShape2D26" type="CollisionShape2D" parent="GroundCollions" unique_id=1312664554]
+position = Vector2(127.65956, 20.425516)
+shape = SubResource("SegmentShape2D_ewbju")
+
+[node name="CollisionShape2D27" type="CollisionShape2D" parent="GroundCollions" unique_id=1757419385]
+position = Vector2(136.85104, 15.82977)
+shape = SubResource("SegmentShape2D_85qyi")
+
+[node name="CollisionShape2D28" type="CollisionShape2D" parent="GroundCollions" unique_id=881239391]
+position = Vector2(-247.65958, -28.595762)
+shape = SubResource("SegmentShape2D_iivbl")
+
+[node name="CollisionShape2D7" type="CollisionShape2D" parent="GroundCollions" unique_id=2132755017]
 position = Vector2(-245.87236, -26.553192)
+shape = SubResource("SegmentShape2D_7nbq1")
+
+[node name="CollisionShape2D29" type="CollisionShape2D" parent="GroundCollions" unique_id=1992042784]
+position = Vector2(-243.06381, -26.553192)
 shape = SubResource("SegmentShape2D_7nbq1")
 
 [node name="Crane" type="CharacterBody2D" parent="." unique_id=1565022501 node_paths=PackedStringArray("shake_sprite_1", "shake_sprite_2", "shake_sprite_3")]
@@ -627,6 +762,8 @@ min_trolley_distance = 110.0
 max_trolley_distance = 580.0
 initial_trolley_distance = 260.0
 rope_winch_speed = 350.0
+trolley_speed_tier1 = 200.0
+water_splash_audio = ExtResource("10_8m3t6")
 boom_local_y = -703.0
 shake_sprite_1 = NodePath("../Background/LandLayer4")
 shake_sprite_2 = NodePath("../Background/LandLayer3")
@@ -695,12 +832,12 @@ angular_damp = 2.0
 [node name="PayloadAnimationSprite2d" type="AnimatedSprite2D" parent="Crane/Payload" unique_id=488710238]
 scale = Vector2(2.6953125, 2.6953125)
 sprite_frames = SubResource("SpriteFrames_yf5fn")
-animation = &"catch"
+animation = &"better_catch"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Crane/Payload" unique_id=1812875115]
 shape = SubResource("CapsuleShape2D_hook")
 
-[node name="CargoCrate" type="RigidBody2D" parent="." unique_id=1639912541 groups=["cargo", "grabbable"]]
+[node name="CargoCrate" type="RigidBody2D" parent="." unique_id=1639912541 groups=["cargo", "grabbable", "rock"]]
 position = Vector2(383, 862)
 mass = 6.0
 contact_monitor = true
@@ -708,7 +845,7 @@ max_contacts_reported = 4
 
 [node name="Sprite2D" type="Sprite2D" parent="CargoCrate" unique_id=768113672]
 modulate = Color(0.85, 0.55, 0.2, 1)
-scale = Vector2(1.8124985, 1.7500013)
+scale = Vector2(5.9062495, 5.7025948)
 texture = ExtResource("21_fkdbe")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="CargoCrate" unique_id=1154397818]
@@ -723,8 +860,16 @@ material = SubResource("ShaderMaterial_g4v7s")
 offset_right = 2222.0
 offset_bottom = 339.0
 
+[node name="UpperWindEffect" type="Node2D" parent="." unique_id=1849102938]
+z_index = 2
+script = ExtResource("28_wind")
+
 [node name="FluidWater" parent="." unique_id=1526576869 instance=ExtResource("18_fluidwater")]
 position = Vector2(1845, 694)
+
+[node name="StoneWall" parent="." unique_id=1987654321 instance=ExtResource("27_stonewall")]
+position = Vector2(1542, 765)
+scale = Vector2(2, 2)
 
 [node name="Houses" type="Node2D" parent="." unique_id=1190244747]
 position = Vector2(1496, 822)
@@ -735,70 +880,18 @@ script = ExtResource("26_houses")
 position = Vector2(-10.978724, 10.212766)
 collision_layer = 0
 collision_mask = 0
+script = ExtResource("31_oeip8")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House1" unique_id=819943257]
+position = Vector2(-0.12768555, 2.9361877)
 shape = SubResource("RectangleShape2D_yf5fn")
 disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House1" unique_id=1111773724]
 texture = SubResource("AtlasTexture_fnkle")
 
-[node name="House2" type="StaticBody2D" parent="Houses" unique_id=142779158]
-position = Vector2(-37.531914, 10.212766)
-collision_layer = 0
-collision_mask = 0
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House2" unique_id=1874806735]
-shape = SubResource("RectangleShape2D_yf5fn")
-disabled = true
-
-[node name="Sprite2D" type="Sprite2D" parent="Houses/House2" unique_id=46368743]
-texture = SubResource("AtlasTexture_fnkle")
-
-[node name="House3" type="StaticBody2D" parent="Houses" unique_id=1950926897]
-position = Vector2(-65.3617, 10.212766)
-collision_layer = 0
-collision_mask = 0
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House3" unique_id=1571083430]
-shape = SubResource("RectangleShape2D_yf5fn")
-disabled = true
-
-[node name="Sprite2D" type="Sprite2D" parent="Houses/House3" unique_id=1537200086]
-texture = SubResource("AtlasTexture_fnkle")
-
-[node name="House4" type="StaticBody2D" parent="Houses" unique_id=903456626]
-position = Vector2(-91.65958, 10.212766)
-collision_layer = 0
-collision_mask = 0
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House4" unique_id=895574943]
-shape = SubResource("RectangleShape2D_yf5fn")
-disabled = true
-
-[node name="Sprite2D" type="Sprite2D" parent="Houses/House4" unique_id=347075856]
-texture = SubResource("AtlasTexture_fnkle")
-
-[node name="House5" type="StaticBody2D" parent="Houses" unique_id=1283593104]
-position = Vector2(-181.78725, 10.212769)
-collision_layer = 0
-collision_mask = 0
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House5" unique_id=1734901504]
-shape = SubResource("RectangleShape2D_yf5fn")
-disabled = true
-
-[node name="Sprite2D" type="Sprite2D" parent="Houses/House5" unique_id=1227737951]
-texture = SubResource("AtlasTexture_fnkle")
-
-[node name="House6" type="StaticBody2D" parent="Houses" unique_id=378022918]
-position = Vector2(-208.34044, 10.212769)
-collision_layer = 0
-collision_mask = 0
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House6" unique_id=1832759296]
-shape = SubResource("RectangleShape2D_yf5fn")
-disabled = true
-
-[node name="Sprite2D" type="Sprite2D" parent="Houses/House6" unique_id=1813722374]
-texture = SubResource("AtlasTexture_fnkle")
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Houses/House1" unique_id=473196034]
+sprite_frames = SubResource("SpriteFrames_3gngh")
+animation = &"destroy"
+frame = 4
+frame_progress = 1.0

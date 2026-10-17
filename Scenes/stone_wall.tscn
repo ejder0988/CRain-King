@@ -1,0 +1,40 @@
+[gd_scene format=3 uid="uid://dvscq4k304yke"]
+
+[ext_resource type="Script" path="res://Scripts/stone_wall.gd" id="1_wall"]
+[ext_resource type="Texture2D" uid="uid://wallbuildtex01" path="res://Sprites/Crane/wallbuild.png" id="2_walltex"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_solid"]
+size = Vector2(40, 20)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_drop"]
+size = Vector2(44, 20)
+
+[node name="StoneWall" type="StaticBody2D" groups=["stone_wall"]]
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("1_wall")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 62)
+shape = SubResource("RectangleShape2D_solid")
+
+[node name="DropZone" type="Area2D" parent="."]
+position = Vector2(0, 60)
+collision_layer = 3
+collision_mask = 3
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DropZone"]
+shape = SubResource("RectangleShape2D_drop")
+
+[node name="Label" type="Label" parent="."]
+offset_left = -60.0
+offset_top = 10.0
+offset_right = 60.0
+offset_bottom = 50.0
+theme_override_font_sizes/font_size = 14
+text = "WALL
+[0/24]"
+horizontal_alignment = 1
+vertical_alignment = 1
