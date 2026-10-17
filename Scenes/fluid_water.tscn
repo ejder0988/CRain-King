@@ -1,7 +1,6 @@
 [gd_scene format=3 uid="uid://dtcg1cfq3571p"]
 
 [ext_resource type="Script" uid="uid://de1edp78eb4rt" path="res://Scripts/fluid_water.gd" id="1_fluid"]
-[ext_resource type="Script" uid="uid://cqpq8n8quetab" path="res://water2Dsimulation/script/waterGenerator.gd" id="2_gen"]
 [ext_resource type="Texture2D" uid="uid://m762u2jupu7y" path="res://water2Dsimulation/asset/part.png" id="3_part"]
 [ext_resource type="Shader" uid="uid://dms21dksvwi7u" path="res://water2Dsimulation/script/waterEffect.gdshader" id="4_shader"]
 [ext_resource type="Shader" uid="uid://bwj20j4gttpss" path="res://water2Dsimulation/script/pointer.gdshader" id="5_pointer_sh"]
@@ -13,10 +12,8 @@ shader = ExtResource("4_shader")
 shader_parameter/water_color = Color(0.02, 0.52, 0.8, 0.88)
 shader_parameter/deep_water_color = Color(0.01, 0.32, 0.6, 0.95)
 shader_parameter/foam_color = Color(0.88, 0.96, 1, 0.95)
-shader_parameter/TG_COLOR = Color(1, 0, 1, 1)
-shader_parameter/color_detect_threshold = 0.35
-shader_parameter/threshold = 2.05
-shader_parameter/foam_thickness = 0.22
+shader_parameter/threshold = 0.65
+shader_parameter/foam_thickness = 0.12
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_icon"]
 shader = ExtResource("5_pointer_sh")
@@ -29,12 +26,7 @@ radius = 40.0
 
 [node name="FluidWater" type="Node2D" unique_id=150975186]
 script = ExtResource("1_fluid")
-
-[node name="WaterGenerator" type="Marker2D" parent="." unique_id=1083454422 groups=["waterGenerator"]]
-script = ExtResource("2_gen")
 tex = ExtResource("3_part")
-spawnRad = 20.0
-particle_linear_damp = 0.12
 
 [node name="WaterShader" type="ColorRect" parent="." unique_id=1493625673]
 visible = false

@@ -11,8 +11,6 @@
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_2v82y"]
 shader = ExtResource("6_qhjgq")
-shader_parameter/TG_COLOR = Color(1, 0, 1, 1)
-shader_parameter/color_detect_threshold = 0.7
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_ootnj"]
 shader = ExtResource("8_nbdm4")

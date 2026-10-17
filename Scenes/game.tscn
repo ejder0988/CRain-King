@@ -6,8 +6,10 @@
 [ext_resource type="Script" uid="uid://lw7o5hh6h81i" path="res://Scripts/crane.gd" id="3_crane"]
 [ext_resource type="Texture2D" uid="uid://6xg61sc7wyfu" path="res://Sprites/beacon_idle_0.png" id="4_bidle0"]
 [ext_resource type="Texture2D" uid="uid://cxvm1fa8il0q2" path="res://Sprites/beacon_idle_1.png" id="5_bidle1"]
+[ext_resource type="Texture2D" uid="uid://bk37lbpgi1req" path="res://Sprites/Crane/crane_middle_steel.png" id="6_7nbq1"]
 [ext_resource type="Texture2D" uid="uid://ibq2plr48iud" path="res://Sprites/beacon_turn_0.png" id="6_bturn0"]
 [ext_resource type="Texture2D" uid="uid://b64cuxra8hkyr" path="res://Sprites/beacon_turn_1.png" id="7_bturn1"]
+[ext_resource type="Texture2D" uid="uid://td3pb28ddnx4" path="res://Sprites/Crane/creane_up_steel.png" id="7_exi56"]
 [ext_resource type="Texture2D" uid="uid://wiij823axt2k" path="res://Sprites/beacon_turn_2.png" id="8_bturn2"]
 [ext_resource type="Texture2D" uid="uid://bs5sgxhqc486a" path="res://Sprites/beacon_turn_3.png" id="9_bturn3"]
 [ext_resource type="Texture2D" uid="uid://dsjuko3h5l668" path="res://Sprites/Crane/crane_part.png" id="10_rku1e"]
@@ -36,7 +38,7 @@ a = Vector2(4.3404236, 29.36171)
 b = Vector2(-4.085106, 22.468094)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_yf5fn"]
-a = Vector2(24.76596, 6.6382904)
+a = Vector2(26.297882, 5.106369)
 b = Vector2(44.680878, 10.723404)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_nnt18"]
@@ -76,6 +78,54 @@ _data = {
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_base"]
 size = Vector2(160, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_22asu"]
+atlas = ExtResource("7_exi56")
+region = Rect2(0, 0, 336, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fkdbe"]
+atlas = ExtResource("7_exi56")
+region = Rect2(336, 0, 336, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_81klo"]
+atlas = ExtResource("7_exi56")
+region = Rect2(672, 0, 336, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_tgy6u"]
+atlas = ExtResource("7_exi56")
+region = Rect2(1008, 0, 336, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_cwurv"]
+atlas = ExtResource("7_exi56")
+region = Rect2(1344, 0, 336, 80)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_57qmd"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_22asu")
+}],
+"loop": 0,
+"name": &"default",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_fkdbe")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_81klo")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_tgy6u")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_cwurv")
+}],
+"loop": 0,
+"name": &"turn",
+"speed": 5.0
+}]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_beacon"]
 animations = [{
@@ -274,10 +324,12 @@ scale = Vector2(3.8739493, 3.8739498)
 texture = ExtResource("2_qxrlw")
 
 [node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=944963635]
-position = Vector2(963, 820)
+position = Vector2(963, 782.00006)
 scale = Vector2(3.9166667, 3.9166667)
 
-[node name="Ground" type="Sprite2D" parent="StaticBody2D" unique_id=1219946096]
+[node name="Ground" type="Sprite2D" parent="StaticBody2D" unique_id=1423934013]
+position = Vector2(-7.914887, -2.2978725)
+scale = Vector2(1.0434396, 1.0434396)
 texture = ExtResource("2_nnt18")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D" unique_id=957904783]
@@ -347,7 +399,9 @@ libraries/ = SubResource("AnimationLibrary_85qyi")
 position = Vector2(991, 1016)
 script = ExtResource("3_crane")
 trolley_speed = 150.0
+max_trolley_distance = 580.0
 rope_winch_speed = 350.0
+boom_local_y = -708.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Crane" unique_id=199735291]
 position = Vector2(-28, -20)
@@ -357,18 +411,15 @@ shape = SubResource("RectangleShape2D_base")
 position = Vector2(-28, 0)
 
 [node name="CraneSprite1" type="Sprite2D" parent="Crane/Visuals" unique_id=65852897]
-modulate = Color(1, 0.5764706, 0, 1)
-self_modulate = Color(1, 0.5764706, 0, 1)
-position = Vector2(0, -292.5)
-scale = Vector2(0.56249976, 5.5703125)
-texture = ExtResource("1_ebmjs")
+position = Vector2(-26.99997, -347)
+scale = Vector2(4.277344, 4.277344)
+texture = ExtResource("6_7nbq1")
 
-[node name="CraneSprite2" type="Sprite2D" parent="Crane/Visuals" unique_id=263276145]
-modulate = Color(1, 0.5764706, 0, 1)
-self_modulate = Color(1, 0.5764706, 0, 1)
-position = Vector2(415.5, -622.5)
-scale = Vector2(7.0078125, 0.5234375)
-texture = ExtResource("1_ebmjs")
+[node name="CraneBodyAnimationSprite2D" type="AnimatedSprite2D" parent="Crane/Visuals" unique_id=1183982990]
+position = Vector2(239.00003, -703)
+scale = Vector2(3.0249999, 3.0249999)
+sprite_frames = SubResource("SpriteFrames_57qmd")
+autoplay = "default"
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Crane" unique_id=473109230]
 position = Vector2(-28, -645)
@@ -378,10 +429,10 @@ animation = &"idle"
 autoplay = "idle"
 
 [node name="TrolleyPivot" type="Marker2D" parent="Crane" unique_id=1808371074]
-position = Vector2(352, -596)
+position = Vector2(570, -708)
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Crane/TrolleyPivot" unique_id=1079103842]
-position = Vector2(-1, -5)
+[node name="CraneTrolleyAnimationSprite2d" type="AnimatedSprite2D" parent="Crane/TrolleyPivot" unique_id=1079103842]
+scale = Vector2(2.479165, 2.479165)
 sprite_frames = SubResource("SpriteFrames_g4v7s")
 animation = &"move"
 autoplay = "default"
@@ -442,4 +493,4 @@ offset_right = 2222.0
 offset_bottom = 339.0
 
 [node name="FluidWater" parent="." unique_id=1526576869 instance=ExtResource("18_fluidwater")]
-position = Vector2(-301, 256)
+position = Vector2(1845, 694)
