@@ -16,24 +16,60 @@ class_name CraneController
 @export var rope_winch_speed: float = 240.0 ## Winch retract/extend speed (px/s)
 @export var rope_offset_y: float = 30.0 ## Vertical offset from TrolleyPivot where the rope hangs down
 @export var rope_stiffness: float = 1.0 ## 1.0 = Inextensible steel wire constraint
-@export var pendulum_damping: float = 0.999 ## Atmospheric damping for pendulum swing
 
-@export_group("Aim & Swing Mechanic")
-@export var swing_max_angle_deg: float = 65.0 ## Maximum swing angle in degrees (-65 to +65)
-@export var swing_speed: float = 2.0 ## Oscillation speed (radians per second)
+@export_group("Aim & Swing Physics")
+@export var swing_max_angle_deg: float = 72.0 ## Maximum swing angle in degrees (-72 to +72)
+@export var pendulum_gravity: float = 850.0 ## Restoring force pulling rope back toward vertical
+@export var pendulum_damping: float = 2.4 ## Smooth damping bringing rope to rest when not pushed
+@export var swing_inertia_scale: float = 0.85 ## How strongly trolley push/movement accelerates the swing
+@export var movement_swing_strength: float = 2.0 ## How strongly continuous trolley movement tilts the rope opposite to motion
+@export var turn_swing_kick: float = 5.2 ## Swing angular impulse applied when crane turns (significantly amplified)
 @export var lock_trolley_during_descent: bool = true ## Keep trolley fixed in place while claw is deployed
 @export var auto_retract_after_landing: bool = true ## Auto-retract back to top after grab/landing
 @export var landing_retract_delay: float = 0.5 ## Delay before auto-retracting if no object caught
 @export var arrow_distance: float = 123.0 ## Distance of arrow from TrolleyPivot
 
+@export_group("Aim Trajectory & Arrow Juice")
+## Enable pulsing bob animation along the aim direction
+@export var enable_arrow_bob: bool = true
+## Bob distance in pixels along the aim vector
+@export var arrow_bob_amplitude: float = 8.5
+## Speed of the bob oscillation
+@export var arrow_bob_speed: float = 7.0
+## Enable velocity stretch and inertia tilt when swinging
+@export var enable_arrow_stretch: bool = true
+## Enable streaming dotted trajectory laser line
+@export var enable_trajectory_dots: bool = true
+## Enable smart target detection and color lock-on
+@export var enable_target_lockon: bool = true
+## Default aim color (electric cyan / neon blue)
+@export var aim_color_normal: Color = Color(0.2, 0.9, 1.0, 1.0)
+## Lock-on aim color when aligned with a crate (electric gold)
+@export var aim_color_locked: Color = Color(1.0, 0.84, 0.12, 1.0)
+## Aim color when carrying cargo to show drop trajectory (warm coral amber)
+@export var aim_color_cargo: Color = Color(1.0, 0.55, 0.25, 1.0)
+
 @export_group("Cargo Carrying & Release")
-@export var drop_on_down_key: bool = false ## If true, pressing DOWN at the top releases cargo immediately instead of lowering
 @export var cargo_carry_offset_y: float = 36.0 ## Vertical distance of cargo below payload center
 
 @export_group("Visual Rendering")
 @export var rope_segments: int = 12 ## Curve resolution segments when cable is slack
 @export var mast_local_x: float = -28.0 ## Local X position of the mast center
 @export var boom_local_y: float = -596.0 ## Local Y position of the trolley track along the boom
+
+@export_group("Idle Shake Effect")
+## Enable continuous subtle millimetric shake for designated sprites
+@export var enable_idle_shake: bool = true
+## Primary 3 sprites to apply the idle shake to (assignable in Inspector)
+@export var shake_sprite_1: CanvasItem = null
+@export var shake_sprite_2: CanvasItem = null
+@export var shake_sprite_3: CanvasItem = null
+## Additional sprites to include in the shake if needed
+@export var extra_shake_sprites: Array[CanvasItem] = []
+## Millimetric shake amplitude in pixels (X: horizontal, Y: vertical)
+@export var shake_amplitude: Vector2 = Vector2(0.1, 0.05)
+## Speed multiplier for the shake oscillation
+@export var shake_speed_scale: float = 1.0
 
 # ==============================================================================
 # 2. ENUMS, SIGNALS AND CONSTANTS
@@ -80,12 +116,17 @@ var is_turning: bool = false ## Input lock during turn animation
 var _is_turn_reversing: bool = false ## Tracks second half of flip turnaround
 var _trolley_tween: Tween = null ## Smooth 1-second tween to opposite side on turn
 
+var _shake_tweens: Array[Tween] = []
+var _shaking_sprites: Array[CanvasItem] = []
+
 var prev_trolley_pos: Vector2 = Vector2.ZERO
 var trolley_velocity: Vector2 = Vector2.ZERO
 
 var is_at_top: bool = true ## True when hook is at the top swinging
 var swing_timer: float = 0.0 ## Oscillator time tracker
 var current_swing_angle: float = 0.0 ## Current swing angle in radians
+var swing_angular_velocity: float = 0.0 ## Current swing angular velocity in radians/sec
+var prev_trolley_velocity: Vector2 = Vector2.ZERO ## Tracks trolley acceleration for inertial swing
 var locked_aim_angle: float = 0.0 ## Angle locked when DOWN was pressed
 var locked_aim_dir: Vector2 = Vector2.DOWN ## Direction vector locked when DOWN was pressed
 
@@ -99,6 +140,13 @@ var waiting_for_down_release: bool = false ## Requires releasing DOWN key after 
 var is_descending: bool = false ## True when lowering winch with catch sequence
 var has_resolved_landing: bool = false ## True once ground/cargo landing has resolved
 var has_caught_object: bool = false ## True if hook contacted a grabbable object
+
+var _base_arrow_scale: Vector2 = Vector2(2.75, 2.75)
+var _arrow_anim_timer: float = 0.0
+var _aim_trajectory: CraneAimTrajectory = null
+var is_aim_locked_on: bool = false
+var locked_target_node: Node2D = null
+var _was_locked_on_prev_frame: bool = false
 
 
 func _find_payload_sprite() -> AnimatedSprite2D:
@@ -195,6 +243,15 @@ func _ready() -> void:
 			add_child(line_2d)
 	if not arrow:
 		arrow = _find_arrow()
+	if arrow:
+		_base_arrow_scale = arrow.scale
+		arrow.modulate = aim_color_normal
+
+	_aim_trajectory = get_node_or_null("AimTrajectory") as CraneAimTrajectory
+	if not _aim_trajectory:
+		_aim_trajectory = CraneAimTrajectory.new()
+		_aim_trajectory.name = "AimTrajectory"
+		add_child(_aim_trajectory)
 
 	_update_trolley_position()
 	prev_trolley_pos = trolley_pivot.global_position
@@ -248,6 +305,9 @@ func _ready() -> void:
 		arrow.rotation = 0.0
 		arrow.position = Vector2(0.0, rope_offset_y) + Vector2.DOWN * arrow_distance
 
+	# Continuous subtle millimetric idle shake for designated sprites
+	_init_idle_shake()
+
 
 func _process(_delta: float) -> void:
 	_update_rope_visual()
@@ -269,7 +329,7 @@ func _physics_process(delta: float) -> void:
 	# 4. Cable up/down input control
 	_handle_rope_winch_target(delta)
 
-	# 5. Flip direction (Space) - only allowed when empty and at top
+	# 5. Flip direction (Space) - allowed at top
 	_handle_flip_input()
 
 	# 6. Check cargo contact during descent
@@ -358,18 +418,109 @@ func _update_trolley_position() -> void:
 # 6. AIM, SWING & CARGO TRAJECTORY
 # ==============================================================================
 func _update_swing_oscillation(delta: float) -> void:
-	swing_timer += swing_speed * delta
-	var max_rad: float = deg_to_rad(swing_max_angle_deg)
-	current_swing_angle = sin(swing_timer) * max_rad
-	current_swing_angle = clampf(current_swing_angle, MIN_PAYLOAD_ROTATION, MAX_PAYLOAD_ROTATION)
+	if delta > 0.0:
+		# Effective cable length for pendulum physics
+		var eff_len: float = maxf(current_rope_length, 50.0)
 
-	# 1. Update Arrow: visible and pointing along swing angle
+		# Horizontal acceleration of the trolley (inertia pushes the pendulum)
+		var trolley_accel_x: float = (trolley_velocity.x - prev_trolley_velocity.x) / delta
+		trolley_accel_x = clampf(trolley_accel_x, -4000.0, 4000.0)
+
+		# 1. Restoring gravity torque (pulls toward 0)
+		var restoring: float = -(pendulum_gravity / eff_len) * sin(current_swing_angle)
+
+		# 2. Damping torque (smoothly settles to rest when idle)
+		var damping: float = -pendulum_damping * swing_angular_velocity
+
+		# 3. Inertial push from trolley movement / acceleration (opposite to motion)
+		var inertial: float = +(trolley_accel_x / eff_len) * cos(current_swing_angle) * swing_inertia_scale
+
+		# 4. Continuous movement lag (rope and payload lag behind the moving trolley)
+		var drag: float = +(trolley_velocity.x / eff_len) * movement_swing_strength * cos(current_swing_angle) * swing_inertia_scale
+
+		var total_angular_accel: float = restoring + damping + inertial + drag
+
+		# Semi-implicit Euler integration
+		swing_angular_velocity += total_angular_accel * delta
+		swing_angular_velocity = clampf(swing_angular_velocity, -10.5, 10.5)
+
+		current_swing_angle += swing_angular_velocity * delta
+
+		# Limit angle to maximum allowed swing
+		var max_rad: float = deg_to_rad(swing_max_angle_deg)
+		if absf(current_swing_angle) > max_rad:
+			current_swing_angle = clampf(current_swing_angle, -max_rad, max_rad)
+			swing_angular_velocity *= -0.3 # soft bounce against boom limit
+
+		# Prevent tiny floating-point jitter when near 0 and nearly still
+		if absf(current_swing_angle) < 0.001 and absf(swing_angular_velocity) < 0.005 and trolley_velocity.length_squared() < 1.0:
+			current_swing_angle = 0.0
+			swing_angular_velocity = 0.0
+
+	prev_trolley_velocity = trolley_velocity
+
+	_arrow_anim_timer += delta
+
+	# 1. Target Lock-On Detection along current aim angle
+	var aim_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
+	var locked_node: Node2D = null
+	if enable_target_lockon and not is_carrying_cargo:
+		locked_node = _check_target_lockon(aim_dir)
+
+	is_aim_locked_on = (locked_node != null)
+	locked_target_node = locked_node
+
+	if is_aim_locked_on and not _was_locked_on_prev_frame:
+		_play_lockon_pop()
+	_was_locked_on_prev_frame = is_aim_locked_on
+
+	# Determine active aim color
+	var target_color: Color = aim_color_normal
+	if is_carrying_cargo:
+		target_color = aim_color_cargo
+	elif is_aim_locked_on:
+		target_color = aim_color_locked
+
+	# 2. Update Arrow: visible, bobbing, inertia stretch and glowing
 	if arrow:
 		arrow.visible = true
-		arrow.position = Vector2(0.0, rope_offset_y) + Vector2.DOWN.rotated(current_swing_angle) * arrow_distance
-		arrow.rotation = current_swing_angle
 
-	# 2. Update Payload position and rotation to swing in unison
+		# Bobbing along aim vector
+		var bob_speed: float = arrow_bob_speed * (1.6 if is_aim_locked_on else 1.0)
+		var dynamic_dist: float = arrow_distance
+		if enable_arrow_bob:
+			dynamic_dist += sin(_arrow_anim_timer * bob_speed) * arrow_bob_amplitude
+
+		arrow.position = Vector2(0.0, rope_offset_y) + aim_dir * dynamic_dist
+
+		# Velocity inertia stretch & tilt
+		if enable_arrow_stretch:
+			var stretch: float = clampf(absf(swing_angular_velocity) * 0.065, 0.0, 0.35)
+			var pulse_scale: float = 1.0 + (0.08 if is_aim_locked_on else 0.03) * sin(_arrow_anim_timer * 14.0)
+			arrow.scale.y = _base_arrow_scale.y * (1.0 + stretch) * pulse_scale
+			arrow.scale.x = _base_arrow_scale.x * (1.0 - stretch * 0.45) * pulse_scale
+			arrow.rotation = current_swing_angle - swing_angular_velocity * 0.035
+		else:
+			arrow.rotation = current_swing_angle
+
+		# Smooth modulate transition to active aim color
+		arrow.modulate = arrow.modulate.lerp(target_color, 12.0 * delta)
+
+	# 3. Update Trajectory Dotted Laser Beam & Target Reticle
+	if _aim_trajectory:
+		var rope_origin: Vector2 = _get_rope_origin()
+		var target_pos: Vector2 = locked_target_node.global_position if is_aim_locked_on else (rope_origin + aim_dir * max_rope_length)
+		_aim_trajectory.update_aim(
+			arrow.global_position if arrow else rope_origin,
+			aim_dir,
+			max_rope_length,
+			is_aim_locked_on,
+			target_pos,
+			target_color,
+			is_at_top and enable_trajectory_dots
+		)
+
+	# 4. Update Payload position and rotation to swing in unison
 	if payload and trolley_pivot:
 		var swing_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
 		payload.global_position = _get_rope_origin() + swing_dir * current_rope_length
@@ -390,23 +541,77 @@ func _update_swing_oscillation(delta: float) -> void:
 		payload_level_changed.emit(current_payload_level)
 
 
+func _check_target_lockon(aim_dir: Vector2) -> Node2D:
+	var rope_orig: Vector2 = _get_rope_origin()
+	var best_target: Node2D = null
+	var min_perp: float = 62.0 # Catch zone width threshold
+
+	var tree := get_tree()
+	if not tree:
+		return null
+
+	var candidates: Array[Node] = []
+	for c in tree.get_nodes_in_group("cargo"):
+		if not candidates.has(c):
+			candidates.append(c)
+	for g in tree.get_nodes_in_group("grabbable"):
+		if not candidates.has(g):
+			candidates.append(g)
+
+	# Proximity check along aim ray
+	for node in candidates:
+		if node is Node2D and node != payload and node != grabbed_body and is_instance_valid(node):
+			var to_node: Vector2 = node.global_position - rope_orig
+			var proj: float = to_node.dot(aim_dir)
+			# Only check objects in front along the aim vector within winch reach
+			if proj > 60.0 and proj <= max_rope_length + 65.0:
+				var perp: float = (to_node - aim_dir * proj).length()
+				if perp < min_perp:
+					min_perp = perp
+					best_target = node as Node2D
+
+	return best_target
+
+
+func _play_lockon_pop() -> void:
+	if not arrow:
+		return
+	var pop := create_tween()
+	pop.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(arrow, "scale", _base_arrow_scale * 1.3, 0.08)
+	pop.tween_property(arrow, "scale", _base_arrow_scale, 0.12)
+
+
 func _launch_aimed_descent() -> void:
 	is_at_top = false
 	locked_aim_angle = current_swing_angle
 	locked_aim_dir = Vector2.DOWN.rotated(locked_aim_angle)
 
-	# Turn off arrow visibility immediately upon descending
+	# Launch burst juice effect on arrow
 	if arrow:
-		arrow.visible = false
+		var burst_tween := create_tween().set_parallel(true)
+		burst_tween.tween_property(arrow, "position", arrow.position + locked_aim_dir * 36.0, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		burst_tween.tween_property(arrow, "scale", _base_arrow_scale * 1.35, 0.12)
+		burst_tween.tween_property(arrow, "modulate:a", 0.0, 0.12)
+		burst_tween.chain().tween_callback(func():
+			if arrow:
+				arrow.visible = false
+				arrow.modulate.a = 1.0
+				arrow.scale = _base_arrow_scale
+		)
+	if _aim_trajectory:
+		_aim_trajectory.play_launch_burst()
 
 	target_rope_length = max_rope_length
 	_start_payload_descent()
 
 
 func _update_deployed_trajectory(delta: float) -> void:
-	# Arrow is strictly invisible while deployed
-	if arrow:
+	# Arrow and trajectory are strictly inactive while deployed
+	if arrow and arrow.visible and not is_at_top:
 		arrow.visible = false
+	if _aim_trajectory and _aim_trajectory.is_active:
+		_aim_trajectory.is_active = false
 
 	# Interpolate current cable length toward target at winch speed
 	if current_rope_length != target_rope_length:
@@ -451,6 +656,12 @@ func _update_deployed_trajectory(delta: float) -> void:
 		current_payload_level = PayloadLevel.TOP
 		if arrow:
 			arrow.visible = true
+			arrow.scale = _base_arrow_scale * 0.2
+			var pop_tween := create_tween()
+			pop_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			pop_tween.tween_property(arrow, "scale", _base_arrow_scale, 0.22)
+		if _aim_trajectory:
+			_aim_trajectory.play_reset_pop()
 
 		# When returning to top, ensure default animation is playing
 		if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
@@ -458,9 +669,8 @@ func _update_deployed_trajectory(delta: float) -> void:
 				payload_sprite.play("default")
 
 		# Resume swinging seamlessly from current angle
-		var max_rad: float = deg_to_rad(swing_max_angle_deg)
-		var ratio: float = clampf(locked_aim_angle / max_rad, -1.0, 1.0)
-		swing_timer = asin(ratio)
+		current_swing_angle = locked_aim_angle
+		swing_angular_velocity = 0.0
 
 
 # ==============================================================================
@@ -617,19 +827,26 @@ func _resolve_landing() -> void:
 
 
 # ==============================================================================
-# 8. CARGO RELEASE MECHANISM (SPACE, E, OR ACTION)
+# 8. CARGO RELEASE MECHANISM (DOWN KEY ONLY)
 # ==============================================================================
 func _handle_cargo_release_input() -> void:
 	if not is_carrying_cargo:
 		return
+	if is_turning:
+		return
+	if not can_release_cargo:
+		return
 
-	# Drop / release cargo on SPACE, E, or dedicated action
-	var pressed_release: bool = Input.is_action_just_pressed("crane_flip") \
-		or Input.is_key_pressed(KEY_SPACE) \
-		or Input.is_key_pressed(KEY_E)
+	# Cargo release is triggered ONLY by the DOWN key (S / Down Arrow / rope_down)
+	var is_down_just_pressed: bool = (
+		(InputMap.has_action("rope_down") and Input.is_action_just_pressed("rope_down"))
+		or Input.is_key_pressed(KEY_S)
+		or Input.is_key_pressed(KEY_DOWN)
+	)
 
-	if pressed_release:
+	if is_down_just_pressed and not waiting_for_down_release:
 		just_released_cargo_this_frame = true
+		waiting_for_down_release = true
 		_release_cargo()
 
 
@@ -650,9 +867,9 @@ func _release_cargo() -> void:
 	if is_at_top:
 		# If swinging at top, inherit tangential release impulse
 		var swing_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
-		var angular_vel: float = cos(swing_timer) * swing_speed * deg_to_rad(swing_max_angle_deg)
+		var angular_vel: float = swing_angular_velocity
 		var tangent_dir: Vector2 = Vector2(-swing_dir.y, swing_dir.x)
-		release_velocity = tangent_dir * (angular_vel * current_rope_length) + Vector2(0, 30.0)
+		release_velocity = tangent_dir * (angular_vel * current_rope_length) + trolley_velocity + Vector2(0, 30.0)
 	else:
 		release_velocity += Vector2(0, 30.0)
 
@@ -736,6 +953,19 @@ func _find_touching_grabbable_body() -> RigidBody2D:
 			var diff: Vector2 = crate.global_position - payload.global_position
 			if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
 				return crate
+	if is_inside_tree():
+		var tree := get_tree()
+		if tree:
+			for node in tree.get_nodes_in_group("cargo"):
+				if node is RigidBody2D and node != payload and node != grabbed_body:
+					var diff: Vector2 = node.global_position - payload.global_position
+					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+						return node
+			for node in tree.get_nodes_in_group("grabbable"):
+				if node is RigidBody2D and node != payload and node != grabbed_body:
+					var diff: Vector2 = node.global_position - payload.global_position
+					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+						return node
 	return null
 
 
@@ -780,7 +1010,7 @@ func _on_payload_animation_finished() -> void:
 func _handle_flip_input() -> void:
 	if not is_at_top:
 		return
-	if is_carrying_cargo or just_released_cargo_this_frame:
+	if just_released_cargo_this_frame:
 		return
 	var pressed_flip: bool = Input.is_action_just_pressed("crane_flip") or Input.is_key_pressed(KEY_SPACE)
 	if pressed_flip and not is_turning:
@@ -790,6 +1020,9 @@ func _handle_flip_input() -> void:
 func _start_turn() -> void:
 	is_turning = true
 	_is_turn_reversing = false
+
+	# Apply turn swing impulse (rope swings dynamically as the crane flips)
+	swing_angular_velocity += -float(facing_direction) * turn_swing_kick
 
 	# Smoothly tween trolley to the exact opposite position across mast within 1 second
 	if _trolley_tween and _trolley_tween.is_valid():
@@ -830,6 +1063,8 @@ func _on_crane_body_animation_finished() -> void:
 		_is_turn_reversing = true
 		facing_direction *= -1
 		_apply_flip_state(float(facing_direction))
+		# Additional swing impulse as the crane boom whips around
+		swing_angular_velocity += -float(facing_direction) * (turn_swing_kick * 0.45)
 
 		if crane_body_sprite and crane_body_sprite.sprite_frames and crane_body_sprite.sprite_frames.has_animation("turn"):
 			var last_frame: int = crane_body_sprite.sprite_frames.get_frame_count("turn") - 1
@@ -929,3 +1164,72 @@ func _update_rope_visual() -> void:
 	var end_pos: Vector2 = line_2d.to_local(payload.global_position)
 	line_2d.add_point(start_pos)
 	line_2d.add_point(end_pos)
+
+
+# ==============================================================================
+# 11. CONTINUOUS IDLE SHAKE (TWEEN)
+# ==============================================================================
+func _init_idle_shake() -> void:
+	if not enable_idle_shake:
+		return
+
+	var targets: Array[CanvasItem] = []
+	if shake_sprite_1 and is_instance_valid(shake_sprite_1):
+		targets.append(shake_sprite_1)
+	if shake_sprite_2 and is_instance_valid(shake_sprite_2):
+		targets.append(shake_sprite_2)
+	if shake_sprite_3 and is_instance_valid(shake_sprite_3):
+		targets.append(shake_sprite_3)
+
+	for extra in extra_shake_sprites:
+		if extra and is_instance_valid(extra) and not targets.has(extra):
+			targets.append(extra)
+
+	# If no sprites were manually assigned in Inspector, automatically check for children named ShakeSprite1/2/3
+	if targets.is_empty():
+		for name_pattern in ["ShakeSprite1", "ShakeSprite2", "ShakeSprite3"]:
+			var found := find_child(name_pattern, true, false) as CanvasItem
+			if found:
+				targets.append(found)
+
+	for i in range(targets.size()):
+		add_shake_sprite(targets[i])
+
+
+func add_shake_sprite(item: CanvasItem) -> void:
+	if not item or not is_instance_valid(item):
+		return
+	if _shaking_sprites.has(item):
+		return
+	_shaking_sprites.append(item)
+	_start_sprite_idle_shake(item, _shaking_sprites.size() - 1)
+
+
+func _start_sprite_idle_shake(target: CanvasItem, index: int) -> void:
+	if not is_instance_valid(target):
+		return
+
+	# If the item has an 'offset' property (Sprite2D, AnimatedSprite2D), animating offset
+	# prevents modifying 'position', keeping transforms and hierarchy 100% stable.
+	var use_offset: bool = "offset" in target
+	var base_vec: Vector2 = target.offset if use_offset else target.position
+	var prop_name: String = "offset" if use_offset else "position"
+
+	var tween: Tween = create_tween().set_loops()
+	_shake_tweens.append(tween)
+
+	# Phase desynchronization so the 3 sprites move organically rather than in robotic lockstep
+	var phase: float = float(index) * 2.094 # ~120 degrees apart
+	var s1 := Vector2(cos(phase) * shake_amplitude.x * 0.75, sin(phase) * shake_amplitude.y * 0.85)
+	var s2 := Vector2(-sin(phase + 1.2) * shake_amplitude.x * 0.85, cos(phase + 0.9) * shake_amplitude.y * 0.7)
+	var s3 := Vector2(cos(phase + 2.5) * shake_amplitude.x * 0.6, -sin(phase + 1.8) * shake_amplitude.y * 0.9)
+	var s4 := Vector2(-cos(phase + 3.8) * shake_amplitude.x * 0.8, -cos(phase + 3.1) * shake_amplitude.y * 0.6)
+
+	var step_dur: float = 0.24 / maxf(shake_speed_scale, 0.05)
+
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(target, prop_name, base_vec + s1, step_dur * 1.0)
+	tween.tween_property(target, prop_name, base_vec + s2, step_dur * 1.15)
+	tween.tween_property(target, prop_name, base_vec + s3, step_dur * 0.95)
+	tween.tween_property(target, prop_name, base_vec + s4, step_dur * 1.1)
+	tween.tween_property(target, prop_name, base_vec, step_dur * 1.0)

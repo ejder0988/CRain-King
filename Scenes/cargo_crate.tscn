@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://b8d8qexu2e47m"]
+
+[ext_resource type="Texture2D" uid="uid://ddho0o83i5h6i" path="res://Sprites/rock.png" id="1_rock"]
+[ext_resource type="Script" path="res://Scripts/cargo_crate.gd" id="2_crate"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_1"]
+radius = 18.0
+
+[node name="CargoCrate" type="RigidBody2D" groups=["cargo", "grabbable"]]
+mass = 6.0
+contact_monitor = true
+max_contacts_reported = 4
+script = ExtResource("2_crate")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+modulate = Color(0.85, 0.55, 0.2, 1)
+scale = Vector2(1.8125, 1.75)
+texture = ExtResource("1_rock")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_1")

@@ -9,11 +9,12 @@
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_water"]
 shader = ExtResource("4_shader")
-shader_parameter/water_color = Color(0.02, 0.52, 0.8, 0.88)
-shader_parameter/deep_water_color = Color(0.01, 0.32, 0.6, 0.95)
-shader_parameter/foam_color = Color(0.88, 0.96, 1, 0.95)
-shader_parameter/threshold = 0.65
-shader_parameter/foam_thickness = 0.12
+shader_parameter/water_color = Color(0.04, 0.62, 0.88, 0.82)
+shader_parameter/deep_water_color = Color(0.01, 0.24, 0.52, 0.94)
+shader_parameter/abyss_water_color = Color(0.005, 0.08, 0.26, 0.98)
+shader_parameter/foam_color = Color(0.92, 0.98, 1, 0.96)
+shader_parameter/threshold = 0.62
+shader_parameter/foam_thickness = 0.08
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_icon"]
 shader = ExtResource("5_pointer_sh")

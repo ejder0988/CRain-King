@@ -41,6 +41,12 @@ var _particle_material: CanvasItemMaterial
 ## Maximum particle limit to maintain 60+ FPS
 @export var max_particles: int = 600
 
+@export_group("Fluid Collision")
+## Collision layer for water particles (Default: 1)
+@export var water_collision_layer: int = 1
+## Collision mask for water particles (Default: 1 -> touches all StaticBody2D terrain shapes and water particles)
+@export var water_collision_mask: int = 1
+
 @export_group("Mouse Interaction")
 ## Enable mouse pointer interaction to stir/push water
 @export var enable_pointer: bool = false
@@ -52,8 +58,11 @@ var _particle_material: CanvasItemMaterial
 @onready var pointer_node: RigidBody2D = get_node_or_null("UI/pointer")
 @onready var icon_node: Sprite2D = get_node_or_null("UI/Icon")
 
+var _collision_exceptions: Array[RID] = []
+
 
 func _ready() -> void:
+	add_to_group("fluid_water")
 	cir_shape.radius = particle_radius
 	cir_shape.custom_solver_bias = 0.1
 
@@ -138,6 +147,12 @@ func create_object(pos: Vector2, initial_vel: Vector2 = Vector2.ZERO) -> void:
 	ps.body_set_param(object, ps.BODY_PARAM_MASS, particle_mass)
 	ps.body_set_param(object, ps.BODY_PARAM_LINEAR_DAMP, particle_linear_damp)
 	ps.body_set_mode(object, ps.BODY_MODE_RIGID_LINEAR)
+	ps.body_set_collision_layer(object, water_collision_layer)
+	ps.body_set_collision_mask(object, water_collision_mask)
+
+	for exc_rid in _collision_exceptions:
+		if exc_rid.is_valid():
+			ps.body_add_collision_exception(object, exc_rid)
 
 	var trans := Transform2D(0, pos)
 	ps.body_set_state(object, ps.BODY_STATE_TRANSFORM, trans)
@@ -263,3 +278,35 @@ func _exit_tree() -> void:
 		if img.is_valid():
 			RenderingServer.free_rid(img)
 	objects.clear()
+
+
+## Registers a body to be completely ignored by all current and future water particles
+func add_collision_exception(body: CollisionObject2D) -> void:
+	if not body:
+		return
+	var r: RID = body.get_rid()
+	if not _collision_exceptions.has(r):
+		_collision_exceptions.append(r)
+		var ps := PhysicsServer2D
+		for pair in objects:
+			var obj: RID = pair[0]
+			if obj.is_valid():
+				ps.body_add_collision_exception(obj, r)
+
+
+## Returns the highest water level (lowest Y coordinate) in the horizontal range [min_x, max_x].
+## Returns INF if fewer than min_count particles exist in that range.
+func get_water_surface_y_in_range(min_x: float, max_x: float, min_count: int = 3) -> float:
+	var lowest_y: float = INF
+	var count: int = 0
+	var ps := PhysicsServer2D
+	for pair in objects:
+		var obj: RID = pair[0]
+		if obj.is_valid():
+			var trans: Transform2D = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var p: Vector2 = trans.origin
+			if p.x >= min_x and p.x <= max_x:
+				count += 1
+				if p.y < lowest_y:
+					lowest_y = p.y
+	return lowest_y if count >= min_count else INF
