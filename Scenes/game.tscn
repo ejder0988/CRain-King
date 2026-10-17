@@ -16,30 +16,63 @@
 [ext_resource type="PackedScene" uid="uid://ds7wan56d10w4" path="res://Scenes/weather_system.tscn" id="11_weather"]
 [ext_resource type="Texture2D" uid="uid://cy3j8tdfsjg1e" path="res://Sprites/Crane/Arrow.png" id="12_1phco"]
 [ext_resource type="Shader" uid="uid://b2eeoxbloehs3" path="res://Shaders/cloud.gdshader" id="15_nb51f"]
+[ext_resource type="Texture2D" uid="uid://bnli5t31822de" path="res://Sprites/Background/factory.png" id="17_ewbju"]
+[ext_resource type="PackedScene" uid="uid://dtcg1cfq3571p" path="res://Scenes/fluid_water.tscn" id="18_fluidwater"]
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_57qmd"]
 a = Vector2(-138.63829, 24.76596)
-b = Vector2(146.55319, 24.76596)
+b = Vector2(128.42554, 25.276596)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_exi56"]
+a = Vector2(25.531929, 32.425537)
+b = Vector2(42.893623, 25.276596)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_7t8sx"]
+a = Vector2(4.3404236, 29.36171)
+b = Vector2(50.042557, 29.872345)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_mg4q0"]
+a = Vector2(4.3404236, 29.36171)
+b = Vector2(-4.085106, 22.468094)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_yf5fn"]
-a = Vector2(41.617004, 9.957443)
-b = Vector2(54.638306, 18.12767)
+a = Vector2(24.76596, 6.6382904)
+b = Vector2(44.680878, 10.723404)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_nnt18"]
-a = Vector2(52.340424, 17.36171)
-b = Vector2(78.893616, 19.659576)
+a = Vector2(39.319153, 18.12767)
+b = Vector2(61.78723, 35.234055)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_ewbju"]
-a = Vector2(77.617004, 19.659576)
-b = Vector2(97.78723, 29.36171)
+a = Vector2(76.595764, 19.659561)
+b = Vector2(95.48938, 20.936172)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_85qyi"]
-a = Vector2(96, 28.595749)
-b = Vector2(484.85107, 79.40425)
+a = Vector2(79.65958, 36.765976)
+b = Vector2(97.53192, 44.42552)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_iivbl"]
-a = Vector2(599.4894, -66.893616)
-b = Vector2(484.85107, 79.40425)
+a = Vector2(503.48938, 87.06383)
+b = Vector2(477.19153, 85.531906)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_7nbq1"]
+a = Vector2(503.48938, 87.06383)
+b = Vector2(502.4681, -27.063843)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ewbju"]
+size = Vector2(305, 253)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_g4v7s"]
+atlas = ExtResource("17_ewbju")
+region = Rect2(22, 26, 57, 67)
+
+[sub_resource type="Animation" id="Animation_ewbju"]
+resource_name = "popout"
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_85qyi"]
+_data = {
+&"popout": SubResource("Animation_ewbju")
+}
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_base"]
 size = Vector2(160, 40)
@@ -235,6 +268,7 @@ shader_parameter/position_impact = 0.75
 [node name="game" type="Node2D" unique_id=1131706611]
 
 [node name="background" type="Sprite2D" parent="." unique_id=224541661]
+visible = false
 position = Vector2(1060, 481)
 scale = Vector2(3.8739493, 3.8739498)
 texture = ExtResource("2_qxrlw")
@@ -250,16 +284,28 @@ texture = ExtResource("2_nnt18")
 position = Vector2(29.617004, 0)
 shape = SubResource("SegmentShape2D_57qmd")
 
+[node name="CollisionShape2D8" type="CollisionShape2D" parent="StaticBody2D" unique_id=1620746927]
+position = Vector2(-151.40427, 0)
+shape = SubResource("SegmentShape2D_exi56")
+
+[node name="CollisionShape2D9" type="CollisionShape2D" parent="StaticBody2D" unique_id=1594591180]
+position = Vector2(-175.14893, 2.5531914)
+shape = SubResource("SegmentShape2D_7t8sx")
+
+[node name="CollisionShape2D10" type="CollisionShape2D" parent="StaticBody2D" unique_id=1426561982]
+position = Vector2(-175.14893, 2.5531914)
+shape = SubResource("SegmentShape2D_mg4q0")
+
 [node name="CollisionShape2D2" type="CollisionShape2D" parent="StaticBody2D" unique_id=1824992915]
-position = Vector2(134.55318, 14.042553)
+position = Vector2(129.95743, 21.19149)
 shape = SubResource("SegmentShape2D_yf5fn")
 
 [node name="CollisionShape2D3" type="CollisionShape2D" parent="StaticBody2D" unique_id=1036217469]
-position = Vector2(134.55318, 14.042553)
+position = Vector2(134.55318, 14.553188)
 shape = SubResource("SegmentShape2D_nnt18")
 
 [node name="CollisionShape2D4" type="CollisionShape2D" parent="StaticBody2D" unique_id=293140187]
-position = Vector2(134.55318, 14.042553)
+position = Vector2(118.72339, 29.361702)
 shape = SubResource("SegmentShape2D_ewbju")
 
 [node name="CollisionShape2D5" type="CollisionShape2D" parent="StaticBody2D" unique_id=847514980]
@@ -267,8 +313,35 @@ position = Vector2(134.55318, 14.042553)
 shape = SubResource("SegmentShape2D_85qyi")
 
 [node name="CollisionShape2D6" type="CollisionShape2D" parent="StaticBody2D" unique_id=275872876]
-position = Vector2(134.55318, 14.042553)
+position = Vector2(-245.87236, -26.553192)
 shape = SubResource("SegmentShape2D_iivbl")
+
+[node name="CollisionShape2D7" type="CollisionShape2D" parent="StaticBody2D" unique_id=2132755017]
+position = Vector2(-245.87236, -26.553192)
+shape = SubResource("SegmentShape2D_7nbq1")
+
+[node name="factory" type="StaticBody2D" parent="." unique_id=1213739968]
+position = Vector2(137, 843)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="factory" unique_id=1073232225]
+position = Vector2(-29.5, -13.5)
+shape = SubResource("RectangleShape2D_ewbju")
+
+[node name="Sprite2D" type="Sprite2D" parent="factory" unique_id=452277058]
+position = Vector2(-12.999998, -87.99997)
+scale = Vector2(5.7730265, 5.773027)
+texture = SubResource("AtlasTexture_g4v7s")
+
+[node name="Label" type="Label" parent="factory" unique_id=1167213259]
+offset_left = -51.0
+offset_top = -305.0
+offset_right = 30.0
+offset_bottom = -170.0
+theme_override_font_sizes/font_size = 90
+text = "Q"
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="factory" unique_id=910190501]
+libraries/ = SubResource("AnimationLibrary_85qyi")
 
 [node name="Crane" type="CharacterBody2D" parent="." unique_id=1565022501]
 position = Vector2(991, 1016)
@@ -347,7 +420,7 @@ animation = &"catch_start"
 shape = SubResource("CapsuleShape2D_hook")
 
 [node name="CargoCrate" type="RigidBody2D" parent="." unique_id=1639912541]
-position = Vector2(1378.5, 875)
+position = Vector2(304, 862)
 mass = 6.0
 
 [node name="Sprite2D" type="Sprite2D" parent="CargoCrate" unique_id=768113672]
@@ -356,6 +429,7 @@ scale = Vector2(0.5, 0.5)
 texture = ExtResource("1_ebmjs")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="CargoCrate" unique_id=1154397818]
+position = Vector2(0.5, 0)
 shape = SubResource("RectangleShape2D_crate")
 
 [node name="WeatherSystem" parent="." unique_id=1491274038 instance=ExtResource("11_weather")]
@@ -366,3 +440,6 @@ visible = false
 material = SubResource("ShaderMaterial_g4v7s")
 offset_right = 2222.0
 offset_bottom = 339.0
+
+[node name="FluidWater" parent="." unique_id=1526576869 instance=ExtResource("18_fluidwater")]
+position = Vector2(-301, 256)

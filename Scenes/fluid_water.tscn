@@ -1,0 +1,78 @@
+[gd_scene format=3 uid="uid://dtcg1cfq3571p"]
+
+[ext_resource type="Script" uid="uid://de1edp78eb4rt" path="res://Scripts/fluid_water.gd" id="1_fluid"]
+[ext_resource type="Script" uid="uid://cqpq8n8quetab" path="res://water2Dsimulation/script/waterGenerator.gd" id="2_gen"]
+[ext_resource type="Texture2D" uid="uid://m762u2jupu7y" path="res://water2Dsimulation/asset/part.png" id="3_part"]
+[ext_resource type="Shader" uid="uid://dms21dksvwi7u" path="res://water2Dsimulation/script/waterEffect.gdshader" id="4_shader"]
+[ext_resource type="Shader" uid="uid://bwj20j4gttpss" path="res://water2Dsimulation/script/pointer.gdshader" id="5_pointer_sh"]
+[ext_resource type="Script" uid="uid://dfbpnkaisv8bq" path="res://water2Dsimulation/script/pointer.gd" id="6_pointer_sc"]
+[ext_resource type="Texture2D" uid="uid://bdfcpwmcrcmis" path="res://water2Dsimulation/asset/icon.svg" id="7_iconsvg"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_water"]
+shader = ExtResource("4_shader")
+shader_parameter/water_color = Color(0.02, 0.52, 0.8, 0.88)
+shader_parameter/deep_water_color = Color(0.01, 0.32, 0.6, 0.95)
+shader_parameter/foam_color = Color(0.88, 0.96, 1, 0.95)
+shader_parameter/TG_COLOR = Color(1, 0, 1, 1)
+shader_parameter/color_detect_threshold = 0.35
+shader_parameter/threshold = 2.05
+shader_parameter/foam_thickness = 0.22
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_icon"]
+shader = ExtResource("5_pointer_sh")
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_bg3sf"]
+friction = 0.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_awbqw"]
+radius = 40.0
+
+[node name="FluidWater" type="Node2D" unique_id=150975186]
+script = ExtResource("1_fluid")
+
+[node name="WaterGenerator" type="Marker2D" parent="." unique_id=1083454422 groups=["waterGenerator"]]
+script = ExtResource("2_gen")
+tex = ExtResource("3_part")
+spawnRad = 20.0
+particle_linear_damp = 0.12
+
+[node name="WaterShader" type="ColorRect" parent="." unique_id=1493625673]
+visible = false
+top_level = true
+z_index = 4
+material = SubResource("ShaderMaterial_water")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 1920.0
+offset_bottom = 1080.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="UI" type="Node2D" parent="." unique_id=23633309]
+
+[node name="Icon" type="Sprite2D" parent="UI" unique_id=895005755]
+visible = false
+z_index = 6
+material = SubResource("ShaderMaterial_icon")
+scale = Vector2(2, 2)
+texture = ExtResource("3_part")
+
+[node name="pointer" type="RigidBody2D" parent="UI" unique_id=21871204]
+process_mode = 4
+mass = 1000.0
+physics_material_override = SubResource("PhysicsMaterial_bg3sf")
+lock_rotation = true
+script = ExtResource("6_pointer_sc")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="UI/pointer" unique_id=245294097]
+shape = SubResource("CircleShape2D_awbqw")
+
+[node name="Icon" type="Sprite2D" parent="UI/pointer/CollisionShape2D" unique_id=119029574]
+scale = Vector2(0.35, 0.35)
+texture = ExtResource("7_iconsvg")
+
+[node name="Timer" type="Timer" parent="UI/pointer" unique_id=397803166]
+wait_time = 0.25
+one_shot = true

@@ -513,7 +513,7 @@ func _resolve_landing() -> void:
 		if grabbed_body:
 			is_carrying_cargo = true
 			can_release_cargo = false
-			grabbed_body.freeze = true
+			grabbed_body.set_deferred("freeze", true)
 			if payload:
 				payload.add_collision_exception_with(grabbed_body)
 			cargo_picked_up.emit(grabbed_body)
@@ -570,7 +570,7 @@ func _release_cargo() -> void:
 	var released_ref: RigidBody2D = grabbed_body
 
 	# 1. Unfreeze physics body so it falls under normal gravity
-	grabbed_body.freeze = false
+	released_ref.set_deferred("freeze", false)
 
 	# 2. Inherit crane velocity + slight downward release momentum
 	var release_velocity: Vector2 = payload.linear_velocity
@@ -608,10 +608,10 @@ func _on_payload_body_entered(body: Node) -> void:
 	if body is RigidBody2D and body != payload and not is_carrying_cargo:
 		has_caught_object = true
 		if is_descending and not has_resolved_landing:
-			_resolve_landing()
+			call_deferred("_resolve_landing")
 	elif body is StaticBody2D:
 		if is_descending and not has_resolved_landing:
-			_resolve_landing()
+			call_deferred("_resolve_landing")
 
 
 func _is_touching_grabbable_object() -> bool:
