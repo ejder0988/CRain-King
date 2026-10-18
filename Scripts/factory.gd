@@ -24,8 +24,8 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 @export var upgrade_key: Key = KEY_SHIFT
 ## Alternative key to upgrade factory
 @export var alt_upgrade_key: Key = KEY_U
-## Upgrade cost for each level: Level 1->2 ($10), 2->3 ($25), 3->4 ($45), 4->5 ($80)
-@export var level_upgrade_costs: Array[int] = [10, 25, 45, 80]
+## Upgrade cost for each level: Level 1->2 ($5), 2->3 ($10), 3->4 ($15), 4->5 ($20)
+@export var level_upgrade_costs: Array[int] = [5, 10, 15, 20]
 
 @export_group("Level Sprites")
 ## Visual sprite textures for each level (Level 1 to 5). Auto-sliced from factory.png if left empty.
@@ -283,24 +283,40 @@ func _finish_production() -> void:
 		animation_player.play("popout")
 
 	# Fabrikadan daima SADECE Tuğla (Brick) düşer, başka hiçbir nesne çıkamaz!
-	production_count += 1
-	var spawned_product: RigidBody2D = _instantiate_brick()
+	# Fabrikanın seviyesi 4 ise 2 adet, 5 ise 3 adet, diğer seviyelerde 1 adet tuğla spawnlanır.
+	var spawn_count: int = get_spawn_count_for_level()
+	var target_parent: Node = get_tree().current_scene
+	if not target_parent:
+		target_parent = owner if owner else get_parent()
 
-	if spawned_product:
-		var target_parent: Node = get_tree().current_scene
-		if not target_parent:
-			target_parent = owner if owner else get_parent()
-		target_parent.add_child(spawned_product)
+	var w = _find_fluid_water()
 
-		# Ensure water exception on product
-		var w = _find_fluid_water()
-		if w and w.has_method("add_collision_exception"):
-			w.add_collision_exception(spawned_product)
+	for i in range(spawn_count):
+		production_count += 1
+		var spawned_product: RigidBody2D = _instantiate_brick()
 
-		spawned_product.global_position = spawn_position
-		brick_spawned.emit(spawned_product, current_level)
-		print("[Factory] TUĞLA (Brick) üretildi ve çıktı! Konum: ", spawn_position)
-		rock_spawned.emit(spawned_product, current_level)
+		if spawned_product:
+			target_parent.add_child(spawned_product)
+
+			# Ensure water exception on product
+			if w and w.has_method("add_collision_exception"):
+				w.add_collision_exception(spawned_product)
+
+			# Tuğlaların üst üste binip patlamaması için hafif yatay/dikey ofset
+			var offset := Vector2.ZERO
+			if spawn_count == 2:
+				offset = Vector2(-22.0 + i * 44.0, -i * 6.0)
+			elif spawn_count == 3:
+				offset = Vector2(-32.0 + i * 32.0, -abs(i - 1) * 6.0)
+
+			spawned_product.global_position = spawn_position + offset
+			if spawn_count > 1:
+				var impulse_x := (offset.x / 32.0) * 18.0
+				spawned_product.apply_central_impulse(Vector2(impulse_x, -25.0))
+
+			brick_spawned.emit(spawned_product, current_level)
+			print("[Factory] TUĞLA (Brick %d/%d) üretildi ve çıktı! Konum: %s" % [i + 1, spawn_count, str(spawned_product.global_position)])
+			rock_spawned.emit(spawned_product, current_level)
 
 	production_finished.emit()
 	_update_label_text()
@@ -320,11 +336,19 @@ func _instantiate_brick() -> RigidBody2D:
 
 
 
+func get_spawn_count_for_level() -> int:
+	if current_level >= 5:
+		return 3
+	elif current_level == 4:
+		return 2
+	return 1
+
+
 func get_upgrade_cost() -> int:
 	var idx: int = current_level - 1
 	if idx >= 0 and idx < level_upgrade_costs.size():
 		return level_upgrade_costs[idx]
-	return 0
+	return current_level * 5
 
 
 func can_upgrade() -> bool:

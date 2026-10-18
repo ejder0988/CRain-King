@@ -84,6 +84,19 @@ func _ready() -> void:
 
 	_setup_debug_ui()
 
+	# Oyun başlarken tam ekran açılsın
+	_apply_initial_fullscreen()
+
+
+func _apply_initial_fullscreen() -> void:
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	# Bir frame sonra da teyit et
+	call_deferred("_ensure_fullscreen")
+
+
+func _ensure_fullscreen() -> void:
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
 
 func _setup_debug_ui() -> void:
 	if _debug_canvas:
@@ -297,7 +310,8 @@ func _get_cheat_sheet_bbcode() -> String:
 		"[b][color=#64b5f6]── SU FİZİĞİ & SİMÜLASYONU ──[/color][/b]\n" +
 		" [color=#ffe082][b][T][/b][/color]    Test: Sel / Taşkın Dalgasını Başlat\n" +
 		" [color=#ffe082][b][G][/b][/color]    Su Patlaması Ekle (150 Damla)\n" +
-		" [color=#ffe082][b][P][/b][/color]    Su Fare İmleci Etkileşimi (İtme/Çekme)\n\n" +
+		" [color=#ffe082][b][P][/b][/color]    Su Fare İmleci Etkileşimi (İtme/Çekme)\n" +
+		" [color=#ffe082][b][F10][/b][/color]  Tsunami Sıvı Su Oranını Değiştir (%0 / %10 / %20 / %30 / %50 / %100 - Yağmur sabittir)\n\n" +
 		"[b][color=#b0bec5]── OYUN KONTROLLERİ ──[/color][/b]\n" +
 		" [color=#e0e0e0][b][Q / E][/b][/color]    Vinç Kulesi Dönüşü\n" +
 		" [color=#e0e0e0][b][A / D][/b][/color]    Vinç Arabası İleri / Geri\n" +
@@ -426,18 +440,67 @@ func _show_debug_feedback(is_active: bool) -> void:
 		if _mini_panel_btn:
 			_mini_panel_btn.visible = false
 
+
+## Özel bildirim afişi (Toast) göstermek için yardımcı fonksiyon
+func show_custom_toast(title: String, subtitle: String, border_color: Color = Color(0.2, 0.85, 0.5), duration: float = 2.5) -> void:
+	if not _debug_root or not _toast_panel or not _toast_title_label or not _toast_sub_label:
+		return
+
+	_toast_title_label.text = title
+	_toast_title_label.add_theme_color_override("font_color", border_color)
+	_toast_sub_label.text = subtitle
+
+	var toast_style: StyleBoxFlat = _toast_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	if toast_style:
+		toast_style.border_color = border_color
+
+	if _toast_tween and _toast_tween.is_valid():
+		_toast_tween.kill()
+
+	_toast_panel.visible = true
+	_toast_panel.modulate.a = 0.0
+	_toast_panel.offset_top = 8.0
+
+	_toast_tween = create_tween()
+	_toast_tween.set_parallel(true)
+	_toast_tween.tween_property(_toast_panel, "modulate:a", 1.0, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_toast_tween.tween_property(_toast_panel, "offset_top", 22.0, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_toast_tween.chain().tween_interval(duration)
+	_toast_tween.chain().tween_property(_toast_panel, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_toast_tween.tween_callback(func(): _toast_panel.visible = false)
+
 func toggle_fullscreen() -> void:
 	var mode := DisplayServer.window_get_mode()
 	if mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:
+		# Tam ekrandan pencere moduna geç (Ekranı küçült)
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		var screen_size := DisplayServer.screen_get_size()
+		var win_size := Vector2i(1280, 720)
+		if screen_size.x >= 1920 and screen_size.y >= 1080:
+			win_size = Vector2i(1600, 900)
+		DisplayServer.window_set_size(win_size)
+		var center_pos := (screen_size - win_size) / 2
+		DisplayServer.window_set_position(center_pos)
+		print("[Display] F11: Ekran küçültüldü (Pencere Modu: %dx%d)" % [win_size.x, win_size.y])
 	else:
+		# Pencere modundan tam ekran moduna geç (Ekranı büyült)
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		print("[Display] F11: Ekran büyütüldü (Tam Ekran Modu)")
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		# F11 Tuşu: Ekranı büyült / küçült (Tam Ekran / Pencere Modu)
+		if event.keycode == KEY_F11 or event.physical_keycode == KEY_F11:
+			get_viewport().set_input_as_handled()
+			toggle_fullscreen()
+			return
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		# F11 Key: Toggle Fullscreen / Windowed mode
-		if event.keycode == KEY_F11:
+		# F11 Key yedek kontrolü
+		if event.keycode == KEY_F11 or event.physical_keycode == KEY_F11:
 			get_viewport().set_input_as_handled()
 			toggle_fullscreen()
 			return

@@ -24,7 +24,7 @@ var _shape_large: CircleShape2D
 
 @export_group("Fluid Water Spawn Settings")
 ## Number of water drops to spawn at game start from this node's position (set to 0 for no initial water)
-@export var initial_drops: int = 160
+@export var initial_drops: int = 100
 ## 0: POINT (drops pour down from this node's position), 1: AREA (drops distributed inside spawn_area)
 @export_enum("POINT:0", "AREA:1") var spawn_mode: int = 0
 ## Size of the pool area to distribute drops inside if spawn_mode is AREA
@@ -113,6 +113,28 @@ var _shape_large: CircleShape2D
 ## Tsunami dalgası sırasında suların sola doğru gidebileceği maksimum yatay hız limiti (px/s)
 @export var tsunami_max_horizontal_speed: float = 480.0
 
+@export_group("Tsunami Water Scaling Settings")
+## İlk tsunamide eklenecek temel su damlası sayısı (Game düğümüyle senkronize çalışır)
+@export var tsunami_base_water_amount: int = 60
+## Her tsunamide önceki tsunamiye göre suyun yüzde artış oranı (% cinsinden: 20 = %20)
+@export_range(0.0, 500.0, 1.0, "suffix:%") var tsunami_water_growth_percentage: float = 20.0:
+	set(val):
+		_tsunami_water_growth_percentage = maxf(val, 0.0)
+		tsunami_water_growth_rate = _tsunami_water_growth_percentage / 100.0
+	get:
+		return _tsunami_water_growth_percentage
+## Her tsunamide önceki tsunamiye göre suyun artış oranı (0.20 = %20)
+@export_range(0.0, 5.0, 0.01) var tsunami_water_growth_rate: float = 0.20:
+	set(val):
+		tsunami_water_growth_rate = maxf(val, 0.0)
+		_tsunami_water_growth_percentage = tsunami_water_growth_rate * 100.0
+	get:
+		return tsunami_water_growth_rate
+## Tsunami dalgası hücum anında ekstra dalga takviye damlası sayısı (Varsayılan: 0 - tüm su rezervuardan gelir)
+@export var tsunami_surge_boost_drops: int = 0
+
+var _tsunami_water_growth_percentage: float = 20.0
+
 @export_group("Mouse Interaction")
 ## Enable mouse pointer interaction to stir/push water
 @export var enable_pointer: bool = false
@@ -172,6 +194,7 @@ var _wave_curl_node: Node2D = null
 var _rain_reservoir_drops_to_spawn: int = 0
 var _rain_reservoir_spawn_interval: float = 0.0
 var _rain_reservoir_timer: float = 0.0
+var _tsunami_spawn_cycle: int = 0
 
 # Orphan Ball Cleaner Timer:
 var _orphan_clean_timer: float = 0.0
@@ -203,6 +226,16 @@ func set_tsunami_push_angle(degrees: float) -> void:
 ## Tsunami itme kuvvetini dinamik olarak değiştirmek için yardımcı fonksiyon
 func set_tsunami_push_force(force: float) -> void:
 	tsunami_push_force = force
+
+
+## Tsunami su artış oranını dinamik olarak değiştirmek için yardımcı fonksiyon
+func set_tsunami_water_growth_rate(rate: float) -> void:
+	tsunami_water_growth_rate = maxf(rate, 0.0)
+
+
+## Tsunami su artış yüzdesini dinamik olarak değiştirmek için yardımcı fonksiyon
+func set_tsunami_water_growth_percentage(percent: float) -> void:
+	tsunami_water_growth_percentage = maxf(percent, 0.0)
 
 
 func _set_water_shader_param(param_name: String, value: Variant) -> void:
@@ -341,9 +374,9 @@ func spawn_initial_drops(count: int) -> void:
 		var top_y: float = global_position.y - half_h
 		var bot_y: float = global_position.y + half_h
 
-		var num_large: int = clampi(int(count * 0.04), 8, 30)
-		var num_medium: int = clampi(int(count * 0.10), 16, 65)
-		var num_small: int = clampi(int(count * 0.28), 45, 160)
+		var num_large: int = int(round(count * 0.10))
+		var num_medium: int = int(round(count * 0.25))
+		var num_small: int = maxi(count - num_large - num_medium, 0)
 
 		# 1. Deep layer: Tier 2 Large Water Sources
 		for i in range(num_large):
@@ -628,7 +661,8 @@ func _physics_process(delta: float) -> void:
 		var active_pushbox = null
 		if has_pushboxes:
 			for pb in pushboxes:
-				if pb.enabled and pb.contains_point(world_pos):
+				var pb_active: bool = pb.is_push_active() if pb.has_method("is_push_active") else pb.enabled
+				if pb_active and pb.contains_point(world_pos):
 					active_pushbox = pb
 					break
 
@@ -971,8 +1005,29 @@ func _merge_dense_particles() -> void:
 		create_object(spawn_info[0], spawn_info[1], spawn_info[2])
 
 
+## Kalan rezervuar damlalarını anında havuza doldurur (yağmur atlandığında veya bittiğinde eksik kalmaması için)
+func finish_pending_rain_reservoir() -> void:
+	if _rain_reservoir_drops_to_spawn <= 0:
+		return
+	var left := _rain_reservoir_drops_to_spawn
+	_rain_reservoir_drops_to_spawn = 0
+	for i in range(left):
+		if max_particles <= 0 or objects.size() < max_particles:
+			var rx: float = randf_range(1960.0, 2360.0)
+			var ry: float = randf_range(720.0, 830.0)
+			var rvel: Vector2 = Vector2(randf_range(-15.0, 15.0), randf_range(30.0, 90.0))
+			var tier: int = WaterTier.SMALL
+			var r_rnd := randf()
+			if r_rnd < 0.20:
+				tier = WaterTier.LARGE
+			elif r_rnd < 0.50:
+				tier = WaterTier.MEDIUM
+			create_object(Vector2(rx, ry), rvel, tier)
+
+
 ## Phase 1: DRAWBACK - Suları sağ tarafa (ekran dışı havuza) yumuşakça çeker (2.0s)
 func start_tsunami_drawback(duration: float = 2.0) -> void:
+	finish_pending_rain_reservoir()
 	_tsunami_phase = TsunamiPhase.DRAWBACK
 	_tsunami_phase_timer = duration
 	_set_water_shader_param("tsunami_wave_front_uv", -1.0)
@@ -999,18 +1054,19 @@ func start_rolling_wave(duration: float = 2.5, cycle_level: int = 1) -> void:
 	var wave_dist: float = maxf(_wave_start_x - _cached_stone_wall_x, 100.0)
 	_wave_travel_speed = wave_dist / maxf(duration, 0.5)
 
-	# Geçici dalga dolgunluk takviyesi (Sadece su eklemeye devam eder)
-	var boost_count: int = mini(18 + _surge_cycle_level * 4, 50)
-	for b in range(boost_count):
-		if max_particles > 0 and objects.size() >= max_particles:
-			break
-		var bx: float = randf_range(2040.0, 2240.0)
-		var by: float = randf_range(810.0, 890.0)
-		var bv: Vector2 = Vector2(randf_range(-20.0, 0.0), randf_range(10.0, 40.0))
-		var tier: int = WaterTier.SMALL if randf() > 0.3 else WaterTier.MEDIUM
-		var obj_rid := create_object(Vector2(bx, by), bv, tier)
-		if obj_rid.is_valid():
-			_temp_boost_particles[obj_rid] = true
+	# Dalga vuruşu anında ekstra takviye damlaları (Varsayılan: 0, tüm su rezervuardan gelir)
+	var boost_count: int = tsunami_surge_boost_drops
+	if boost_count > 0:
+		for b in range(boost_count):
+			if max_particles > 0 and objects.size() >= max_particles:
+				break
+			var bx: float = randf_range(2040.0, 2240.0)
+			var by: float = randf_range(810.0, 890.0)
+			var bv: Vector2 = Vector2(randf_range(-20.0, 0.0), randf_range(10.0, 40.0))
+			var tier: int = WaterTier.SMALL if randf() > 0.3 else WaterTier.MEDIUM
+			var obj_rid := create_object(Vector2(bx, by), bv, tier)
+			if obj_rid.is_valid():
+				_temp_boost_particles[obj_rid] = true
 
 	print("[FluidWater] Tsunami ROLLING_WAVE başladı! Seviye: %d/24 | X: %.1f -> %.1f | Takviye Su: +%d" % [_surge_cycle_level, _wave_front_x, _cached_stone_wall_x, boost_count])
 
@@ -1085,22 +1141,41 @@ func apply_tsunami_surge(_direction: Vector2 = Vector2(-1.0, 0.0), _force: float
 	start_rolling_wave(2.5, _surge_cycle_level)
 
 
-## Yağmur aşaması boyunca sağdaki genişletilmiş havuzda (X > 1920) suyun yavaş yavaş yükselip dev bir rezervuar oluşturmasını sağlar
+## Tsunami başladığı anda spawn_initial_drops çağrılır ve her seferinde initial_drops %20 artar
+func on_tsunami_started() -> int:
+	var drops_now: int = initial_drops
+	spawn_initial_drops(drops_now)
+	initial_drops = int(round(float(initial_drops) * 1.20))
+	print("[FluidWater] 🌊 Tsunami başladı: spawn_initial_drops(%d) çağrıldı! Bir sonraki tsunami için initial_drops: %d (+%%20)" % [
+		drops_now, initial_drops
+	])
+	return drops_now
+
+
+func spawn_tsunami_burst(_cycle_index: int = -1, _override_amount: int = -1) -> int:
+	return on_tsunami_started()
+
+
+## Belirli bir tsunami döngüsü için üretilecek su miktarını hesaplar
+func calculate_tsunami_water_amount(_cycle_idx: int) -> int:
+	return initial_drops
+
+
+func fill_tsunami_liquid_water(_total_drops: int, _duration: float = 8.0) -> void:
+	on_tsunami_started()
+
+
+## Geriye dönük uyumluluk takma adı
 func start_rain_reservoir_fill(total_drops: int, duration: float = 8.0) -> void:
-	if duration <= 0.0 or total_drops <= 0:
-		return
-	_rain_reservoir_drops_to_spawn = total_drops
-	_rain_reservoir_spawn_interval = duration / float(total_drops)
-	_rain_reservoir_timer = 0.0
-	print("[FluidWater] Yağmur rezervuar dolumu başladı: %d damla, %.1f saniye boyunca X > 1920 havuzuna dolduruluyor." % [total_drops, duration])
+	fill_tsunami_liquid_water(total_drops, duration)
 
 
 func start_water_accumulation(total_drops: int, duration: float = 4.0) -> void:
-	start_rain_reservoir_fill(total_drops, duration)
+	fill_tsunami_liquid_water(total_drops, duration)
 
 
 func start_gradual_rain_collection(total_drops: int, duration: float = 4.0) -> void:
-	start_rain_reservoir_fill(total_drops, duration)
+	fill_tsunami_liquid_water(total_drops, duration)
 
 
 ## Dalgalar ve taşan sular yerinde kalmalı, kesinlikle silinmemeli

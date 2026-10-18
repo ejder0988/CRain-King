@@ -91,16 +91,46 @@ class_name GameController
 ## Sel döngüsü sistemi aktif olsun mu?
 @export var enable_flood_cycle: bool = true
 
-@export_group("Flood Water & Surge Physics")
-## İlk tsunamide suya eklenecek temel parçacık sayısı
+enum TsunamiGrowthType {
+	COMPOUND_PERCENTAGE, ## Her tsunami bir önceki tsunaminin %X fazlası kadar su spawnlar (Bileşik artış: 60 -> 72 -> 86 -> 104 -> ...)
+	LINEAR_PERCENTAGE,   ## Her tsunami temel miktarın %X'i kadar doğrusal artar (Doğrusal yüzde: 60 -> 72 -> 84 -> 96 -> ...)
+	FLAT_COUNT           ## Her tsunami sabit sayıda damla artar (+flood_water_increment_per_cycle)
+}
+
+@export_group("Tsunami Sıvı Su Oranı (Liquid Dynamic Water Scaling)")
+## İlk tsunamide havuza eklenecek temel fiziksel sıvı su damlası sayısı (Varsayılan: 60)
+## NOT: Gökyüzündeki görsel yağmur (WeatherSystem) sabittir ve bu ayardan bağımsızdır.
 @export var flood_base_water_amount: int = 60
 
-## Her tsunami geçildiğinde yeni tsunami için eklenen su miktarının artış oranı (%20 için 0.20)
-@export_range(0.0, 2.0, 0.05) var tsunami_water_growth_rate: float = 0.20
+## Tsunami sıvı su artış tipi (Varsayılan: COMPOUND_PERCENTAGE - her tsunami bir öncekinin %X fazlası sıvı su üretir)
+@export var tsunami_growth_type: TsunamiGrowthType = TsunamiGrowthType.COMPOUND_PERCENTAGE
 
-## (Geriye dönük uyumluluk) Her yeni sel döngüsünde su miktarının ne kadar artacağı
+## Her yeni tsunami felaketinde önceki tsunamiye göre fiziksel sıvı suyun yüzde kaç artacağı (% cinsinden: 20 = %20 daha fazla su)
+## NOT: Görsel yağmur her zaman sabit kalır; bu ayar yalnızca tsunaminin fiziksel sıvı su kütlesini (Liquid Dynamics) büyütür.
+@export_range(0.0, 500.0, 1.0, "suffix:%") var tsunami_water_growth_percentage: float = 20.0:
+	set(val):
+		_tsunami_water_growth_percentage = maxf(val, 0.0)
+		tsunami_water_growth_rate = _tsunami_water_growth_percentage / 100.0
+	get:
+		return _tsunami_water_growth_percentage
+
+## Ondalık formatta sıvı su artış oranı (0.20 = %20 artış). tsunami_water_growth_percentage ile senkronizedir.
+@export_range(0.0, 5.0, 0.01) var tsunami_water_growth_rate: float = 0.20:
+	set(val):
+		tsunami_water_growth_rate = maxf(val, 0.0)
+		_tsunami_water_growth_percentage = tsunami_water_growth_rate * 100.0
+	get:
+		return tsunami_water_growth_rate
+
+## Bir tsunamide tek seferde eklenebilecek maksimum sıvı su damlası tavan sınırı (0 = sınırsız)
+@export var max_tsunami_water_spawn: int = 0
+
+## (Geriye dönük uyumluluk) Eski doğrusal artış değişkeni
 @export var flood_water_increment_per_cycle: int = 22
 
+var _tsunami_water_growth_percentage: float = 20.0
+
+@export_group("Tsunami İtme ve Fizik Kuvvetleri (Surge Physics)")
 ## Suların sol tarafa (evlere doğru) vurma itme kuvveti
 @export var flood_surge_force: float = 1450.0
 
@@ -261,6 +291,8 @@ func _ready() -> void:
 	_setup_volcano()
 	_setup_finish_system()
 	set_water_pushboxes_enabled(false)
+
+	# Tsunami kendi suyunu spawn etmez; sahnedeki mevcut su (initial_drops) kullanılır.
 
 	if enable_intro_curtain:
 		var start_delay := maxf(intro_wait_delay + intro_fade_duration, 0.8)
@@ -553,17 +585,20 @@ func _start_first_rain_phase() -> void:
 		else:
 			ws.set_weather(WeatherSystem.WeatherType.DOWNPOUR, first_rain_transition)
 
-	# Yağmur aşaması boyunca sağdaki genişletilmiş havuzda (X > 1920) suyun yavaş yavaş yükselip dev bir rezervuar oluşturmasını sağla
-	# Her tsunami geçildiğinde yeni tsunami için eklenen su miktarı %20 artar:
-	var total_rain_water: int = int(round(float(flood_base_water_amount) * pow(1.0 + tsunami_water_growth_rate, float(_current_flood_cycle))))
+	# Tsunami başladığı anda spawn_initial_drops çağrılarak su spawnlanır ve her seferinde initial_drops %20 artar:
 	var fw: FluidWater = _find_fluid_water()
+	var spawned_water: int = 0
 	if fw:
-		if fw.has_method("start_rain_reservoir_fill"):
-			fw.start_rain_reservoir_fill(total_rain_water, first_rain_duration)
-		elif fw.has_method("start_water_accumulation"):
-			fw.start_water_accumulation(total_rain_water, first_rain_duration)
-
-	print("[FloodCycle] 1. Yağmur (Downpour) başladı! Bu tsunamide toplam %d dalga vuracak! Rezervuar: %d damla (Tsunami #%d, +%%%.0f artış)" % [_total_waves_in_current_tsunami, total_rain_water, _current_flood_cycle + 1, tsunami_water_growth_rate * 100.0])
+		if fw.has_method("on_tsunami_started"):
+			spawned_water = fw.on_tsunami_started()
+		elif fw.has_method("spawn_initial_drops"):
+			spawned_water = fw.initial_drops
+			fw.spawn_initial_drops(spawned_water)
+			fw.initial_drops = int(round(float(spawned_water) * 1.20))
+	var current_water_count: int = fw.objects.size() if fw else 0
+	print("[FloodCycle] 🌊 Tsunami #%d başladı! Toplam dalga: %d | Bu tsunamide spawnlanan: %d damla | Toplam su: %d damla" % [
+		_current_flood_cycle + 1, _total_waves_in_current_tsunami, spawned_water, current_water_count
+	])
 
 
 ## 2. Yağmur Aşaması & Su Çekilmesi: 1. yağmur bittiğinde Night Storm (3.0s geçiş) başlar ve sular sağa çekilir (2.0s)
@@ -1286,7 +1321,14 @@ func set_water_pushboxes_enabled(active: bool) -> void:
 	var pushboxes := get_tree().get_nodes_in_group("water_pushbox")
 	for pb in pushboxes:
 		if is_instance_valid(pb) and "enabled" in pb:
-			pb.enabled = active
+			if active:
+				pb.enabled = true
+			else:
+				# Tsunami olmasa bile itmesi istenen kutular (push_without_tsunami = true) açık kalır
+				if "push_without_tsunami" in pb and pb.push_without_tsunami:
+					pb.enabled = true
+				else:
+					pb.enabled = false
 	print("[Game] Tsunami Su İtme Kutuları (PushBox) %s yapıldı. (Adet: %d)" % ["AKTİF EDİLDİ" if active else "KAPATILDI", pushboxes.size()])
 
 
@@ -1394,6 +1436,73 @@ func _unhandled_input(event: InputEvent) -> void:
 	if is_debug and event.keycode == KEY_T:
 		get_viewport().set_input_as_handled()
 		trigger_debug_flood()
+	elif is_debug and event.keycode == KEY_F10:
+		get_viewport().set_input_as_handled()
+		cycle_tsunami_growth_rate_debug()
+
+
+## Belirli bir tsunami döngüsünde spawn edilecek toplam su damlası miktarını hesaplar
+func calculate_tsunami_water_amount(cycle_index: int) -> int:
+	var base_amt := float(flood_base_water_amount)
+	var calculated: int = int(base_amt)
+	var idx := maxi(cycle_index, 0)
+	match tsunami_growth_type:
+		TsunamiGrowthType.COMPOUND_PERCENTAGE:
+			# Her tsunami bir önceki tsunaminin %X fazlası kadar su üretir:
+			calculated = int(round(base_amt * pow(1.0 + tsunami_water_growth_rate, float(idx))))
+		TsunamiGrowthType.LINEAR_PERCENTAGE:
+			# Her tsunami temel miktarın %X'i kadar doğrusal artar:
+			calculated = int(round(base_amt + (base_amt * tsunami_water_growth_rate * float(idx))))
+		TsunamiGrowthType.FLAT_COUNT:
+			# Sabit damla artışı:
+			calculated = int(base_amt) + (flood_water_increment_per_cycle * idx)
+	if max_tsunami_water_spawn > 0:
+		calculated = mini(calculated, max_tsunami_water_spawn)
+	return maxi(calculated, 1)
+
+
+## Tsunami su artış oranını dinamik olarak değiştirmek için yardımcı fonksiyon (Örn: 0.20 = %20)
+func set_tsunami_water_growth_rate(rate: float) -> void:
+	tsunami_water_growth_rate = maxf(rate, 0.0)
+	var fw: FluidWater = _find_fluid_water()
+	if fw and "tsunami_water_growth_rate" in fw:
+		fw.tsunami_water_growth_rate = tsunami_water_growth_rate
+
+
+## Tsunami su artış yüzdesini dinamik olarak değiştirmek için yardımcı fonksiyon (Örn: 20.0 = %20)
+func set_tsunami_water_growth_percentage(percent: float) -> void:
+	tsunami_water_growth_percentage = maxf(percent, 0.0)
+	var fw: FluidWater = _find_fluid_water()
+	if fw and "tsunami_water_growth_percentage" in fw:
+		fw.tsunami_water_growth_percentage = tsunami_water_growth_percentage
+
+
+## İlk tsunami temel su miktarını dinamik olarak değiştirmek için yardımcı fonksiyon
+func set_tsunami_base_water_amount(amount: int) -> void:
+	flood_base_water_amount = maxi(amount, 1)
+	var fw: FluidWater = _find_fluid_water()
+	if fw and "tsunami_base_water_amount" in fw:
+		fw.tsunami_base_water_amount = flood_base_water_amount
+
+
+## Debug modunda F10 tuşuna basıldığında su artış oranlarını döngüsel olarak değiştirir
+func cycle_tsunami_growth_rate_debug() -> void:
+	var rates: Array[float] = [0.0, 0.10, 0.20, 0.30, 0.50, 1.00]
+	var current_idx: int = -1
+	for i in range(rates.size()):
+		if is_equal_approx(tsunami_water_growth_rate, rates[i]):
+			current_idx = i
+			break
+	var next_idx: int = (current_idx + 1) % rates.size()
+	set_tsunami_water_growth_rate(rates[next_idx])
+	var gm = get_node_or_null("/root/GameManager")
+	if gm and gm.has_method("show_custom_toast"):
+		gm.show_custom_toast(
+			"🌊 TSUNAMİ SIVI SU ORANI AYARLANDI",
+			"Liquid Dynamics: +%%%.0f Su (Görsel yağmur sabittir, sadece tsunami suyu artar)" % [tsunami_water_growth_percentage],
+			Color(0.25, 0.75, 1.0)
+		)
+	print("[FloodCycle] 🌊 Tsunami fiziksel sıvı su artış oranı değiştirildi: +%%%.0f (Katsayı: %.2f - Görsel yağmur sabittir)" % [tsunami_water_growth_percentage, tsunami_water_growth_rate])
 
 
 # ==============================================================================

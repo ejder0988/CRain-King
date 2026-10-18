@@ -11,7 +11,7 @@ shader_parameter/line_color = Color(0, 0, 0, 1)
 shader_parameter/line_thickness = 1.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_pit_pickup"]
-size = Vector2(221, 103)
+size = Vector2(197, 85)
 
 [node name="RockPit" type="Node2D" unique_id=132998857 groups=["rock_pit"]]
 script = ExtResource("2_pit_script")
@@ -32,5 +32,5 @@ collision_layer = 3
 collision_mask = 3
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="PickupArea" unique_id=621763347]
-position = Vector2(3.5, 6.5)
+position = Vector2(3.5, 15.5)
 shape = SubResource("RectangleShape2D_pit_pickup")

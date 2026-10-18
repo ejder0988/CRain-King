@@ -184,7 +184,8 @@ func _physics_process(_delta: float) -> void:
 			var active_pushbox = null
 			if has_pushboxes:
 				for pb in pushboxes:
-					if pb.enabled and pb.contains_point(world_pos):
+					var pb_active: bool = pb.is_push_active() if pb.has_method("is_push_active") else pb.enabled
+					if pb_active and pb.contains_point(world_pos):
 						active_pushbox = pb
 						break
 

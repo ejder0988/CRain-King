@@ -17,6 +17,18 @@ signal water_pushed(pos: Vector2, direction: Vector2)
 		enabled = val
 		queue_redraw()
 
+@export_group("Tsunami & Activation Settings")
+## Tsunami olmasa bile bu kutunun sürekli suyu itmesini sağlar.
+## - Açık (true): Tsunami olsun ya da olmasın bu kutu her zaman suyu iter.
+## - Kapalı (false - varsayılan): Kutu sadece tsunami felaketi sırasında aktifleşir ve suyu iter.
+@export var push_without_tsunami: bool = false:
+	set(val):
+		push_without_tsunami = val
+		if not Engine.is_editor_hint():
+			if push_without_tsunami:
+				enabled = true
+		queue_redraw()
+
 ## Yön belirleme modu:
 ## - Açık (true): İtme yönü kutunun sahnedeki kendi dönüş açısına (Rotation) göre otomatik alınır.
 ## - Kapalı (false): Aşağıdaki push_angle_degrees veya push_direction değerleri kullanılır.
@@ -130,6 +142,21 @@ func _ready() -> void:
 	if not body_exited.is_connected(_on_body_exited):
 		body_exited.connect(_on_body_exited)
 
+	# Varsayılan olarak kutular sadece tsunami sırasında çalışır:
+	# Eğer push_without_tsunami açık ise oyun başında da aktif kalır, kapalı ise tsunami gelene kadar devre dışıdır.
+	if not Engine.is_editor_hint():
+		if push_without_tsunami:
+			enabled = true
+		else:
+			enabled = false
+
+
+## Kutunun anlık olarak suyu itip itmeyeceğini kontrol eder
+func is_push_active() -> bool:
+	if push_without_tsunami:
+		return true
+	return enabled
+
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSFORM_CHANGED:
@@ -213,7 +240,7 @@ func get_global_aabb() -> Rect2:
 
 ## Belirtilen global koordinatın bu pushbox içinde olup olmadığını doğrular
 func contains_point(point: Vector2) -> bool:
-	if not enabled:
+	if not is_push_active():
 		return false
 
 	if not _collision_shape or not _collision_shape.shape:
@@ -264,7 +291,7 @@ func _physics_process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 
-	if not enabled or not push_affects_rigid_bodies or _overlapping_rigid_bodies.is_empty():
+	if not is_push_active() or not push_affects_rigid_bodies or _overlapping_rigid_bodies.is_empty():
 		return
 
 	var dir: Vector2 = get_effective_push_direction()

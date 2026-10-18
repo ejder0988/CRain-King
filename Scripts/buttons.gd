@@ -1087,7 +1087,7 @@ func _setup_shift_price_badge() -> void:
 
 	_shift_price_label = Label.new()
 	_shift_price_label.name = "PriceLabel"
-	_shift_price_label.text = "10$"
+	_shift_price_label.text = "5$"
 	_shift_price_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_shift_price_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_shift_price_label.add_theme_font_size_override("font_size", 14)
@@ -1128,7 +1128,7 @@ func _setup_shift_price_badge() -> void:
 		if factory and factory.has_method("get_upgrade_cost"):
 			update_shift_upgrade_price(factory.get_upgrade_cost(), factory.current_level >= factory.max_level)
 		else:
-			update_shift_upgrade_price(10, false)
+			update_shift_upgrade_price(5, false)
 
 
 ## Fabrika seviye fiyatını günceller

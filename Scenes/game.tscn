@@ -105,7 +105,7 @@ region = Rect2(101, 14, 22, 50)
 atlas = ExtResource("25_22asu")
 region = Rect2(133, 3, 22, 61)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_titue"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_tt7mg"]
 size = Vector2(17.617035, 11.23407)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_8lpvs"]
@@ -151,10 +151,10 @@ animations = [{
 "speed": 10.0
 }]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_tt7mg"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_htg8p"]
 size = Vector2(17.617035, 10.97876)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_htg8p"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_jcvim"]
 size = Vector2(17.617035, 10.97876)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_mucmn"]
@@ -320,15 +320,15 @@ animations = [{
 }]
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_57qmd"]
-a = Vector2(-140.68083, 27.574448)
-b = Vector2(106.72342, 27.829788)
+a = Vector2(-139.65953, 29.872345)
+b = Vector2(108.51068, 21.446808)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_exi56"]
 a = Vector2(30.893631, 36.765945)
-b = Vector2(45.446815, 29.617004)
+b = Vector2(48.25531, 33.191498)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_bu0y5"]
-a = Vector2(10.468086, 30.893616)
+a = Vector2(6.3829803, 30.127655)
 b = Vector2(34.72341, 23.489365)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_6a4tp"]
@@ -336,7 +336,7 @@ a = Vector2(4.085129, -4.0851135)
 b = Vector2(4.085106, 65.872345)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_mg4q0"]
-a = Vector2(23.489365, 35.48935)
+a = Vector2(29.106384, 35.74466)
 b = Vector2(-29.1064, 15.574448)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_yf5fn"]
@@ -377,7 +377,7 @@ b = Vector2(-16.595745, -85.78723)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_7nbq1"]
 a = Vector2(500.68082, 79.91487)
-b = Vector2(616.34045, -170.04257)
+b = Vector2(787.40424, -67.14896)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_32sfa"]
 a = Vector2(510.89362, -7.659569)
@@ -385,7 +385,15 @@ b = Vector2(510.89362, -120)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_titue"]
 a = Vector2(510.12766, -77.61702)
-b = Vector2(644.42554, -94.46809)
+b = Vector2(599.2341, -178.97873)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_tt7mg"]
+a = Vector2(263.74472, -61.787235)
+b = Vector2(591.06384, -77.361694)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_htg8p"]
+a = Vector2(288.51062, 115.914894)
+b = Vector2(371.48938, -105.19149)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ifeo7"]
 atlas = ExtResource("13_oeip8")
@@ -1125,7 +1133,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House1" unique_id=819943257]
 position = Vector2(-0.12768555, 2.8085327)
-shape = SubResource("RectangleShape2D_titue")
+shape = SubResource("RectangleShape2D_tt7mg")
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House1" unique_id=1111773724]
 texture = SubResource("AtlasTexture_j0obb")
@@ -1153,7 +1161,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House2" unique_id=528198923]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_tt7mg")
+shape = SubResource("RectangleShape2D_htg8p")
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House2" unique_id=908321631]
 texture = SubResource("AtlasTexture_fh6x0")
@@ -1181,7 +1189,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House3" unique_id=625670738]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_htg8p")
+shape = SubResource("RectangleShape2D_jcvim")
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House3" unique_id=1131892629]
 texture = SubResource("AtlasTexture_j0obb")
@@ -1246,11 +1254,11 @@ position = Vector2(-144.51064, 14.8084955)
 shape = SubResource("SegmentShape2D_bu0y5")
 
 [node name="CollisionShape2D42" type="CollisionShape2D" parent="GroundCollions" unique_id=121368059]
-position = Vector2(-141.1915, 43.659554)
+position = Vector2(-142.7234, 43.659554)
 shape = SubResource("SegmentShape2D_6a4tp")
 
 [node name="CollisionShape2D43" type="CollisionShape2D" parent="GroundCollions" unique_id=1008612638]
-position = Vector2(-151.65956, 43.65956)
+position = Vector2(-149.10638, 43.65956)
 shape = SubResource("SegmentShape2D_6a4tp")
 
 [node name="CollisionShape2D10" type="CollisionShape2D" parent="GroundCollions" unique_id=1426561982]
@@ -1385,35 +1393,42 @@ shape = SubResource("SegmentShape2D_iivbl")
 position = Vector2(-211.65955, -26.553192)
 shape = SubResource("SegmentShape2D_7nbq1")
 
+[node name="CollisionShape2D22" type="CollisionShape2D" parent="GroundCollions" unique_id=949778007]
+position = Vector2(-208.85106, -20.680866)
+shape = SubResource("SegmentShape2D_7nbq1")
+
 [node name="CollisionShape2D9" type="CollisionShape2D" parent="GroundCollions" unique_id=1848002369]
 position = Vector2(-266.29788, -68.42555)
 shape = SubResource("SegmentShape2D_32sfa")
 
 [node name="CollisionShape2D13" type="CollisionShape2D" parent="GroundCollions" unique_id=924711449]
-position = Vector2(-266.29788, -46.212784)
+position = Vector2(-266.29788, -110.808525)
 shape = SubResource("SegmentShape2D_titue")
+
+[node name="CollisionShape2D45" type="CollisionShape2D" parent="GroundCollions" unique_id=1455822024]
+position = Vector2(70.72339, -229.53192)
+shape = SubResource("SegmentShape2D_tt7mg")
+
+[node name="CollisionShape2D46" type="CollisionShape2D" parent="GroundCollions" unique_id=53150454]
+position = Vector2(291.0638, -203.23405)
+shape = SubResource("SegmentShape2D_htg8p")
 
 [node name="CollisionShape2D29" type="CollisionShape2D" parent="GroundCollions" unique_id=1992042784]
 position = Vector2(-208.85107, -26.553192)
 shape = SubResource("SegmentShape2D_7nbq1")
 
 [node name="Gider" type="Sprite2D" parent="GroundCollions" unique_id=1750774529]
-position = Vector2(-142.7234, 66.38296)
-scale = Vector2(1.7393615, 1.6062453)
+position = Vector2(-141.95744, 55.404236)
+scale = Vector2(1.1489367, 1.0610065)
 texture = ExtResource("17_bwj6o")
 
 [node name="Gider2" type="Sprite2D" parent="GroundCollions" unique_id=2002588220]
-position = Vector2(-134.80852, 54.638275)
-scale = Vector2(0.8098396, 1.005285)
-texture = ExtResource("17_bwj6o")
-
-[node name="Gider3" type="Sprite2D" parent="GroundCollions" unique_id=1960272867]
-position = Vector2(-134.80852, 54.638275)
+position = Vector2(-114.38299, 134.29785)
 scale = Vector2(0.8098396, 1.005285)
 texture = ExtResource("17_bwj6o")
 
 [node name="Gider4" type="Sprite2D" parent="GroundCollions" unique_id=2040114339]
-position = Vector2(-151.91487, 54.638275)
+position = Vector2(-175.14891, 141.19147)
 scale = Vector2(0.8098396, 1.005285)
 texture = ExtResource("17_bwj6o")
 
@@ -1485,6 +1500,7 @@ trolley_speed = 150.0
 min_trolley_distance = 110.0
 max_trolley_distance = 580.0
 initial_trolley_distance = 260.0
+max_rope_length = 540.0
 trolley_speed_tier1 = 200.0
 payload_catch_audio = ExtResource("18_oeip8")
 crane_turn_audio = ExtResource("19_xe308")
@@ -1552,7 +1568,7 @@ texture = SubResource("AtlasTexture_p5qon")
 [node name="Payload" type="RigidBody2D" parent="Crane" unique_id=397697648]
 top_level = true
 z_index = 10
-position = Vector2(1378.5, 716)
+position = Vector2(1378.5, 514)
 mass = 5.0
 gravity_scale = 1.8
 continuous_cd = 1
@@ -1604,8 +1620,9 @@ streak_count = 6
 speck_count = 10
 
 [node name="FluidWater" parent="." unique_id=1526576869 instance=ExtResource("18_fluidwater")]
-position = Vector2(2145, 423)
-initial_drops = 50
+position = Vector2(2512, 192)
+spawn_mode = 1
+spawn_area = Vector2(800, 800)
 particle_mass = 0.001
 
 [node name="WaterKillBox" parent="." unique_id=1982736451 instance=ExtResource("47_killbox")]
@@ -1654,6 +1671,7 @@ libraries/ = SubResource("AnimationLibrary_wr3wg")
 position = Vector2(2002.9998, 981.99994)
 rotation = -2.8797934
 scale = Vector2(0.86266476, 1.2918661)
+push_without_tsunami = null
 use_node_rotation = true
 push_force = 1000.0
 
@@ -1661,12 +1679,30 @@ push_force = 1000.0
 position = Vector2(1536, 862.0001)
 rotation = -2.0943952
 scale = Vector2(0.6487781, 1.2918661)
+push_without_tsunami = null
 use_node_rotation = true
 push_force = 10.0
+
+[node name="WaterPushBox4" parent="." unique_id=1003464871 instance=ExtResource("49_tt7mg")]
+position = Vector2(404, 1084)
+rotation = -4.712389
+scale = Vector2(1.9064655, 0.6031663)
+push_without_tsunami = null
+use_node_rotation = true
+push_force = 20.0
+
+[node name="WaterPushBox5" parent="." unique_id=2119606303 instance=ExtResource("49_tt7mg")]
+position = Vector2(1036.0001, 913)
+rotation = -3.1415927
+scale = Vector2(3.9064655, 0.6031663)
+push_without_tsunami = null
+use_node_rotation = true
+push_force = 1.0
 
 [node name="WaterPushBox2" parent="." unique_id=1609582118 instance=ExtResource("49_tt7mg")]
 position = Vector2(1688, 386)
 rotation = -3.1415927
 scale = Vector2(1.6985747, 1.4042461)
+push_without_tsunami = null
 use_node_rotation = true
 push_force = 20.0
