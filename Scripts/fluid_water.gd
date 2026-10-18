@@ -445,11 +445,7 @@ func _physics_process(delta: float) -> void:
 					tier = WaterTier.MEDIUM
 				create_object(Vector2(rx, ry), rvel, tier)
 
-	# Tek Başına Kalan Suların Temizliği (Orphan Ball Cleaner - 0.15 sn periyotla)
-	_orphan_clean_timer += delta
-	if _orphan_clean_timer >= 0.15:
-		_orphan_clean_timer = 0.0
-		_clean_orphan_particles()
+	# Sular ve dalgalar yerinde kalmalı, silinmemeli
 
 	if _tsunami_cooldown > 0.0:
 		_tsunami_cooldown -= delta
@@ -578,14 +574,7 @@ func _physics_process(delta: float) -> void:
 				cur_v.x = -absf(cur_v.x) * 0.3
 				ps.body_set_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, cur_v)
 
-		# BACKWASH sırasında ekran dışına (X > 1950) dönen geçici takviye suları sil
-		if _tsunami_phase == TsunamiPhase.BACKWASH and world_pos.x > 1950.0:
-			if _temp_boost_particles.has(object):
-				_temp_boost_particles.erase(object)
-				objects.remove_at(i)
-				ps.free_rid(object)
-				RenderingServer.free_rid(img)
-				continue
+
 
 		# 1. HARD VELOCITY CLAMP: Absolute safety clamp prevents water from rocketing skyward off slopes or walls
 		# Horizontal speed never exceeds -420.0 px/s; Upward vertical speed never exceeds -130.0 px/s!
@@ -695,8 +684,8 @@ func _physics_process(delta: float) -> void:
 				ps.body_set_constant_force(object, push_force * mass_mult)
 				force_applied = true
 		# D. TSUNAMI 4-PHASE FORCES:
-		# Phase 1: DRAWBACK (suları sağa, ekran dışı havuza doğru çek)
-		elif _tsunami_phase == TsunamiPhase.DRAWBACK and world_pos.x < 2350.0:
+		# Phase 1: DRAWBACK (sadece deniz tarafındaki suları sağa doğru çeker, şehirdeki sular yerinde kalır)
+		elif _tsunami_phase == TsunamiPhase.DRAWBACK and world_pos.x >= _cached_stone_wall_x and world_pos.x < 2350.0:
 			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_SLEEPING, false)
 			var p_mass: float = particle_mass * mass_mult
 			var pull_force := Vector2(280.0 * p_mass, 25.0 * p_mass)
@@ -1058,72 +1047,9 @@ func start_gradual_rain_collection(total_drops: int, duration: float = 4.0) -> v
 	start_rain_reservoir_fill(total_drops, duration)
 
 
-## Tek Başına Kalan Suların Temizliği (Orphan Ball Cleaner):
-## Eğer sol tarafta (pos.x < wall_x) tek başına kalan bir SMALL su parçacığının
-## 70.0 piksel yarıçapında başka su parçacığı yoksa o parçacık hızlıca buharlaştırılır.
+## Dalgalar ve taşan sular yerinde kalmalı, kesinlikle silinmemeli
 func _clean_orphan_particles() -> void:
-	var wall_x := _get_wall_x()
-	var left_particles: Array[Dictionary] = []
-	var ps := PhysicsServer2D
-
-	for i in range(objects.size()):
-		var item: Array = objects[i]
-		var obj: RID = item[0]
-		var tier: int = item[2]
-		if tier != WaterTier.SMALL or not obj.is_valid() or _held_particles.has(obj):
-			continue
-		var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
-		if trans_var == null:
-			continue
-		var pos: Vector2 = (trans_var as Transform2D).origin
-		if pos.x < wall_x:
-			left_particles.append({
-				"idx": i,
-				"pos": pos,
-				"obj": obj,
-				"img": item[1]
-			})
-
-	if left_particles.is_empty():
-		return
-
-	var to_evaporate_indices: Array[int] = []
-	var count := left_particles.size()
-	var r_sq: float = 70.0 * 70.0
-
-	for a in range(count):
-		var p_a: Vector2 = left_particles[a]["pos"]
-		var has_neighbor: bool = false
-		for b in range(count):
-			if a == b:
-				continue
-			var p_b: Vector2 = left_particles[b]["pos"]
-			if p_a.distance_squared_to(p_b) <= r_sq:
-				has_neighbor = true
-				break
-		if not has_neighbor:
-			to_evaporate_indices.append(left_particles[a]["idx"])
-
-	if to_evaporate_indices.is_empty():
-		return
-
-	to_evaporate_indices.sort()
-	var rs := RenderingServer
-	for k in range(to_evaporate_indices.size() - 1, -1, -1):
-		var del_idx: int = to_evaporate_indices[k]
-		if del_idx < objects.size():
-			var item: Array = objects[del_idx]
-			var obj: RID = item[0]
-			var img: RID = item[1]
-			if _held_particles.has(obj):
-				_held_particles.erase(obj)
-			if _payload_released_particles.has(obj):
-				_payload_released_particles.erase(obj)
-			if obj.is_valid():
-				ps.free_rid(obj)
-			if img.is_valid():
-				rs.free_rid(img)
-			objects.remove_at(del_idx)
+	pass
 
 
 func _setup_wave_curl_visual() -> void:
@@ -1155,8 +1081,8 @@ func _setup_wave_curl_visual() -> void:
 		_wave_curl_node.add_child(sp)
 
 
-## Calms the water, cleans up spilled water that flooded into the city, and culls excess particles in the basin
-func calm_and_cleanup_post_surge(target_max_particles: int = 160) -> void:
+## Dalga sonrasında su durumunu sakinleştirir; sular kesinlikle silinmez, yerinde kalır!
+func calm_and_cleanup_post_surge(_target_max_particles: int = 160) -> void:
 	_tsunami_phase = TsunamiPhase.IDLE
 	_set_water_shader_param("tsunami_wave_front_uv", -1.0)
 	_set_water_shader_param("tsunami_impact_foam", 0.0)
@@ -1164,69 +1090,17 @@ func calm_and_cleanup_post_surge(target_max_particles: int = 160) -> void:
 		_wave_curl_node.visible = false
 
 	var ps := PhysicsServer2D
-	var rs := RenderingServer
 
-	# 1. Calm remaining particles (damp velocities to settle water)
+	# Suları sakinleştir (hızlarını yumuşat, ancak hiçbir suyu silme!)
 	for item in objects:
 		var obj: RID = item[0]
 		if obj.is_valid():
 			var v_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
 			if v_var != null:
 				var v: Vector2 = v_var
-				ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, v * 0.2)
+				ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, v * 0.4)
 
-	# 2. Identify water that breached into the city or overflowed past houses
-	var to_remove: Array[int] = []
-	for i in range(objects.size()):
-		var item: Array = objects[i]
-		var obj: RID = item[0]
-		if not obj.is_valid() or _held_particles.has(obj):
-			continue
-		var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
-		if trans_var == null:
-			continue
-		var pos: Vector2 = (trans_var as Transform2D).origin
-		if pos.x < 1180.0:
-			to_remove.append(i)
-
-	# 3. Clean up any remaining temporary boost particles
-	for i in range(objects.size()):
-		if to_remove.has(i):
-			continue
-		var obj: RID = objects[i][0]
-		if _temp_boost_particles.has(obj):
-			to_remove.append(i)
-	_temp_boost_particles.clear()
-
-	# 4. Cull excess calm particles in off-screen pool (X > 1950) down to target_max_particles
-	var remaining_count: int = objects.size() - to_remove.size()
-	if remaining_count > target_max_particles:
-		var excess: int = remaining_count - target_max_particles
-		for i in range(objects.size() - 1, -1, -1):
-			if excess <= 0:
-				break
-			if not to_remove.has(i) and not _held_particles.has(objects[i][0]):
-				var trans_var = ps.body_get_state(objects[i][0], PhysicsServer2D.BODY_STATE_TRANSFORM)
-				if trans_var != null:
-					var p_x: float = (trans_var as Transform2D).origin.x
-					if p_x > 1950.0:
-						to_remove.append(i)
-						excess -= 1
-
-	to_remove.sort()
-	for k in range(to_remove.size() - 1, -1, -1):
-		var del_idx: int = to_remove[k]
-		if del_idx < objects.size():
-			var item: Array = objects[del_idx]
-			var obj: RID = item[0]
-			var img: RID = item[1]
-			if obj.is_valid():
-				ps.free_rid(obj)
-			if img.is_valid():
-				rs.free_rid(img)
-			objects.remove_at(del_idx)
-
-	print("[FluidWater] Dalga sonrası sular sakinleştirildi ve temizlendi. Kalan parçacık: %d" % objects.size())
+	print("[FluidWater] Dalga sona erdi, sular sakinleşti ve yerinde kaldı! Parçacık sayısı: %d" % objects.size())
 
 
 ## Creates a circular impulse / wave burst at world position (e.g. impact, explosion, tsunami crest)
@@ -1613,26 +1487,28 @@ func fling_held_water(launch_vel: Vector2) -> void:
 	_held_particles.clear()
 
 
-## Çift Koşullu Ev Yıkım Değerlendirmesi:
-## Koşul 1: Dev Tsunami Dalga Darbesi (Anında Yıkım):
-##   - Evin çevresinde en az 5 adet su parçacığı varsa VE ortalama yatay hız avg_vel.x < -140.0 px/s ise:
-##     is_massive_wave_impact = true döner ve ev tek seferde anında patlar.
-## Koşul 2: Baraj Gibi Su Birikmesi (Yavaş / Birikmeli Yıkım):
-##   - Güvenlik Eşiği: Evin etrafındaki toplam su parçacığı sayısı 7'den azsa ev ASLA yıkılamaz (dam_fill_ratio = 0.0).
-##   - Yalnızca en az 7 ve daha fazla parçacık üst üste yığılıp 3x3 ızgaranın %80'ini kapladığında dam_fill_ratio hesaplanır.
-func evaluate_house_hazard(house_rect: Rect2) -> Dictionary:
-	var result := {
-		"is_massive_wave_impact": false,
-		"dam_fill_ratio": 0.0,
-		"particle_count": 0,
-		"avg_vel": Vector2.ZERO
-	}
+## Evin bütün kat collision alanlarının suların collision'ı tarafından %100 içine alınıp alınmadığını kontrol eder.
+## Evin tabanından en üst katının çatısına kadar suyun tam olarak örtmesi gerekir.
+## Üst katlar yukarıda kaldığı sürece veya su seviyesi çatının altındaysa false döner.
+func is_house_100_percent_submerged(full_house_rect: Rect2, floor_rects: Array[Rect2] = []) -> bool:
 	if objects.is_empty():
-		return result
+		return false
 
-	var check_rect := house_rect.grow(35.0)
-	var nearby_count: int = 0
-	var sum_vel := Vector2.ZERO
+	var norm_rect := full_house_rect.abs()
+	if norm_rect.size.x <= 0.0 or norm_rect.size.y <= 0.0:
+		return false
+
+	# 1. 3x3 ızgarada taban, orta ve çatı noktalarının su altında kalma oranını kontrol et (en az %88)
+	var ratio := get_rect_submersion_ratio(norm_rect)
+	if ratio < 0.88:
+		return false
+
+	# 2. En üst katın (çatının) üzerinde/seviyesinde su parçacığı olduğunu doğrula
+	var roof_y: float = norm_rect.position.y
+	var margin_x: float = 12.0
+	var house_left: float = norm_rect.position.x - margin_x
+	var house_right: float = norm_rect.end.x + margin_x
+	var roof_touched: bool = false
 	var ps := PhysicsServer2D
 
 	for item in objects:
@@ -1643,28 +1519,60 @@ func evaluate_house_hazard(house_rect: Rect2) -> Dictionary:
 		if trans_var == null:
 			continue
 		var pos: Vector2 = (trans_var as Transform2D).origin
-		if check_rect.has_point(pos):
-			nearby_count += 1
-			var v_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
-			var v: Vector2 = v_var if v_var != null else Vector2.ZERO
-			sum_vel += v
+		var tier: int = item[2]
+		var r: float = particle_radius if tier == WaterTier.SMALL else (particle_radius * 2.2 if tier == WaterTier.MEDIUM else particle_radius * 4.0)
 
-	result["particle_count"] = nearby_count
-	if nearby_count > 0:
-		result["avg_vel"] = sum_vel / float(nearby_count)
+		# Çatı seviyesine (veya yukarısına) ulaşan su parçacığı var mı?
+		if pos.x >= house_left and pos.x <= house_right:
+			if pos.y <= (roof_y + r + 6.0):
+				roof_touched = true
+				break
 
-	# Koşul 1 - Dev Tsunami Dalga Darbesi (Anında Yıkım):
-	# Duvarı aşan dalga cephesi yüksek hızla gelip evin çarpışma alanına çarptığında (>= 5 parçacık, avg_vel.x < -140.0 px/s)
-	if nearby_count >= 5 and result["avg_vel"].x < -140.0:
-		result["is_massive_wave_impact"] = true
+	if not roof_touched:
+		return false
+
+	# 3. Eğer kat rect'leri verilmişse, en üst kat collision'ında en az 2 su parçacığı bulunmalı
+	if not floor_rects.is_empty():
+		var top_rect: Rect2 = floor_rects[floor_rects.size() - 1]
+		var top_count: int = count_particles_in_rect(top_rect.grow(10.0))
+		if top_count < 2:
+			return false
+
+	return true
+
+
+## Evin bütün kat collision shape'lerine suyun tam olarak değip değmediğini kontrol eder.
+func are_all_floor_collisions_touched(floor_rects: Array[Rect2]) -> bool:
+	if floor_rects.is_empty() or objects.is_empty():
+		return false
+
+	var union_rect: Rect2 = floor_rects[0]
+	for i in range(1, floor_rects.size()):
+		union_rect = union_rect.merge(floor_rects[i])
+
+	return is_house_100_percent_submerged(union_rect, floor_rects)
+
+
+## Ev Su Baskını Değerlendirmesi:
+## Eğer dalga gelip giderse kırılmaz; sadece su bütün kat collisionlarına değerse ve 3 saniye durursa yıkılır.
+func evaluate_house_hazard(house_rect: Rect2, floor_rects: Array[Rect2] = []) -> Dictionary:
+	var result := {
+		"is_massive_wave_impact": false,
+		"all_collisions_touched": false,
+		"dam_fill_ratio": 0.0,
+		"particle_count": 0,
+		"avg_vel": Vector2.ZERO
+	}
+	if objects.is_empty():
 		return result
 
-	# Koşul 2 - Baraj Gibi Su Birikmesi (Yavaş / Birikmeli Yıkım):
-	# Güvenlik Eşiği: Evin etrafındaki toplam su parçacığı sayısı 7'den azsa ev ASLA yıkılamaz!
-	if nearby_count < 7:
-		result["dam_fill_ratio"] = 0.0
-		return result
+	var is_submerged: bool = false
+	if not floor_rects.is_empty():
+		is_submerged = are_all_floor_collisions_touched(floor_rects)
+	else:
+		is_submerged = is_house_100_percent_submerged(house_rect)
 
-	# En az 7 ve daha fazla su parçacığı üst üste yığıldığında 3x3 ızgara doluluk oranını ölç
-	result["dam_fill_ratio"] = get_rect_submersion_ratio(house_rect)
+	result["all_collisions_touched"] = is_submerged
+	result["dam_fill_ratio"] = 1.0 if is_submerged else get_rect_submersion_ratio(house_rect)
+
 	return result

@@ -645,38 +645,47 @@ func _handle_r_hold_restart(delta: float) -> void:
 	var r_down: bool = Input.is_key_pressed(KEY_R)
 
 	if r_down:
+		# Eğer kaybetme ekranı açıksa, R basıldığı anda kaybettin ekranı hemen kapanacak ve arkasında karadelik açılacak
+		var hm = get_tree().get_first_node_in_group("houses_manager")
+		if hm and hm.has_method("is_game_over_showing") and hm.is_game_over_showing():
+			hm.hide_game_over_ui()
+
+		var bht = get_node_or_null("/root/BlackHoleTransition")
+		if not _r_was_down:
+			if bht and bht.has_method("start_hold"):
+				bht.start_hold()
+
 		_r_held_duration += delta
+		var p: float = clampf(_r_held_duration / r_restart_hold_time, 0.0, 1.0)
 
-		if _r_held_duration >= 0.15:
-			var ratio: float = clamp((_r_held_duration - 0.15) / (r_restart_hold_time - 0.15), 0.0, 1.0)
+		if bht and bht.has_method("set_hold_progress"):
+			bht.set_hold_progress(p, _r_held_duration)
 
-			_restart_container.visible = true
-			_restart_container.modulate.a = lerp(_restart_container.modulate.a, 1.0, 0.25)
-			_restart_bar.value = ratio * 100.0
-			_restart_subtitle.text = "Oyunu yeniden başlatmak için [R] basılı tutun (%d%%)" % int(ratio * 100.0)
-
-			var overlay_alpha: float = clamp(ratio * 0.55, 0.0, 0.60)
-			_screen_overlay.color = Color(0.0, 0.05, 0.10, overlay_alpha)
-
-			# %100 DOLDU: OYUNU YENİDEN BAŞLAT
-			if ratio >= 1.0:
-				_r_handled_restart = true
-				_screen_overlay.color = Color(0.2, 0.8, 1.0, 0.9)
-				print("[Buttons] R tuşu ile oyun yeniden başlatılıyor...")
-				get_tree().reload_current_scene()
-				return
+		# %100 DOLDU: OYUNU YENİDEN BAŞLAT
+		if p >= 1.0:
+			_r_handled_restart = true
+			if _restart_container:
+				_restart_container.visible = false
+			print("[Buttons] R tuşu ile karadelik çöküşü tamamlandı, oyun yeniden başlatılıyor...")
+			if bht and bht.has_method("finish_and_reload"):
+				bht.finish_and_reload()
+			else:
+				get_tree().change_scene_to_file("res://Scenes/game.tscn")
+			return
 	else:
 		if _r_was_down:
 			_r_held_duration = 0.0
-			var tw := create_tween()
-			tw.set_parallel(true)
-			tw.tween_property(_restart_container, "modulate:a", 0.0, 0.2)
-			tw.tween_property(_screen_overlay, "color:a", 0.0, 0.25)
-			tw.set_parallel(false)
-			tw.tween_callback(func():
-				_restart_container.visible = false
-				_restart_bar.value = 0.0
-			)
+			var bht = get_node_or_null("/root/BlackHoleTransition")
+			if bht and bht.has_method("cancel_hold"):
+				bht.cancel_hold()
+
+			if _restart_container and _restart_container.visible:
+				var tw := create_tween()
+				tw.tween_property(_restart_container, "modulate:a", 0.0, 0.2)
+				tw.tween_callback(func():
+					_restart_container.visible = false
+					_restart_bar.value = 0.0
+				)
 
 	_r_was_down = r_down
 

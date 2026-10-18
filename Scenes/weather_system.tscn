@@ -7,22 +7,6 @@
 [ext_resource type="AudioStream" uid="uid://cimrrtyu5epp2" path="res://Sounds/Rain/thunder-explosion.wav" id="4_2ut7w"]
 [ext_resource type="Material" uid="uid://b0h61c80061g4" path="res://addons/weather_fx_2d_lite/presets/lightning_flash__single_strike.tres" id="4_lightning"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hint"]
-content_margin_left = 12.0
-content_margin_top = 6.0
-content_margin_right = 12.0
-content_margin_bottom = 6.0
-bg_color = Color(0.06, 0.08, 0.12, 0.75)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.3, 0.4, 0.6, 0.6)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
-
 [node name="WeatherSystem" type="CanvasLayer" unique_id=1743711164]
 layer = 10
 script = ExtResource("1_weather")
@@ -58,47 +42,11 @@ mouse_filter = 2
 script = ExtResource("2_layer")
 preset = ExtResource("4_lightning")
 
-[node name="UI" type="Control" parent="." unique_id=93864675]
-layout_mode = 3
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-
-[node name="HintBadge" type="PanelContainer" parent="UI" unique_id=331255810]
-layout_mode = 1
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -280.0
-offset_top = 18.0
-offset_right = 280.0
-offset_bottom = 54.0
-grow_horizontal = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_hint")
-
-[node name="HintLabel" type="Label" parent="UI/HintBadge" unique_id=398373629]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.85, 0.9, 0.98, 1)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
-theme_override_constants/shadow_offset_x = 1
-theme_override_constants/shadow_offset_y = 1
-theme_override_font_sizes/font_size = 14
-text = "Weather: Night Storm  |  [1] Downpour  [2] Night Storm  [3] Clear  [L] Lightning"
-horizontal_alignment = 1
-vertical_alignment = 1
-
 [node name="DownpourAudioPlayer" type="AudioStreamPlayer" parent="." unique_id=1832049182]
 stream = ExtResource("2_7l0lc")
-bus = &"Master"
 
 [node name="NightStormAudioPlayer" type="AudioStreamPlayer" parent="." unique_id=1832049183]
 stream = ExtResource("3_skoxg")
-bus = &"Master"
 
 [node name="LightningAudioPlayer" type="AudioStreamPlayer" parent="." unique_id=1832049184]
 stream = ExtResource("4_2ut7w")
-bus = &"Master"

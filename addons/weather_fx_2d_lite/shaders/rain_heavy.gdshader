@@ -31,10 +31,26 @@ uniform float splash_y : hint_range(0.0, 1.0) = 0.93;
 uniform float splash_depth : hint_range(0.01, 0.3) = 0.06;
 group_uniforms;
 
+group_uniforms collision_ground;
+uniform sampler2D ground_height_texture : filter_linear, repeat_disable;
+uniform bool use_collision_height = true;
+uniform float collision_bounce_intensity : hint_range(0.0, 3.0) = 1.35;
+group_uniforms;
+
 group_uniforms storm_sweep;
 uniform float right_to_left_progress : hint_range(0.0, 1.0) = 1.0;
 uniform float coverage_feather : hint_range(0.01, 0.5) = 0.20;
 group_uniforms;
+
+float get_ground_y(float uv_x) {
+	if (use_collision_height) {
+		float h = texture(ground_height_texture, vec2(clamp(uv_x, 0.0, 1.0), 0.5)).r;
+		if (h > 0.02 && h < 0.99) {
+			return h;
+		}
+	}
+	return splash_y;
+}
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -85,8 +101,9 @@ float rain_layer(vec2 p, float cols, float spd, float dens, float t, float sd, f
 // - Multi-layer dense distribution with boundary neighbor checking (no grid clipping)
 // - Ground impact mist veil hovering over the rail/ground surface
 vec2 splash_layer(vec2 p, float t) {
-	float y_min = splash_y - splash_depth * 1.15;
-	float y_max = splash_y + splash_depth * 0.65;
+	float local_ground_y = get_ground_y(clamp(p.x / aspect, 0.0, 1.0));
+	float y_min = local_ground_y - splash_depth * 1.5;
+	float y_max = local_ground_y + splash_depth * 0.8;
 	if (p.y < y_min || p.y > y_max || splash_amount <= 0.001) {
 		return vec2(0.0);
 	}
@@ -119,7 +136,9 @@ vec2 splash_layer(vec2 p, float t) {
 		float h_pos_x = hash12(seed_vec + vec2(9.12, 6.78));
 		float h_pos_y = hash12(seed_vec + vec2(5.67, 1.23));
 		float center_x = (c_idx + 0.15 + 0.70 * h_pos_x) / cols1;
-		float center_y = splash_y + (h_pos_y - 0.5) * (splash_depth * 0.18);
+		float col_uv_x = clamp(center_x / aspect, 0.0, 1.0);
+		float center_ground_y = get_ground_y(col_uv_x);
+		float center_y = center_ground_y + (h_pos_y - 0.5) * (splash_depth * 0.18);
 		vec2 impact_pt = vec2(center_x, center_y);
 		vec2 d = p - impact_pt;
 
@@ -197,7 +216,8 @@ vec2 splash_layer(vec2 p, float t) {
 		float h_x2 = hash12(seed_vec2 + vec2(2.2, 9.9));
 		float h_y2 = hash12(seed_vec2 + vec2(4.4, 1.1));
 		float cx2 = (c_idx2 + 0.1 + 0.8 * h_x2) / cols2;
-		float cy2 = splash_y + (h_y2 - 0.5) * (splash_depth * 0.15);
+		float col2_uv_x = clamp(cx2 / aspect, 0.0, 1.0);
+		float cy2 = get_ground_y(col2_uv_x) + (h_y2 - 0.5) * (splash_depth * 0.15);
 		vec2 pt2 = vec2(cx2, cy2);
 
 		// Quick micro-pop
@@ -216,8 +236,8 @@ vec2 splash_layer(vec2 p, float t) {
 		}
 	}
 
-	// 4. Ground impact mist along the rail/splash plane
-	float mist_band = (1.0 - smoothstep(splash_y, splash_y + splash_depth * 0.35, p.y)) * smoothstep(splash_y - splash_depth * 0.75, splash_y, p.y);
+	// 4. Ground impact mist along the collision plane
+	float mist_band = (1.0 - smoothstep(local_ground_y, local_ground_y + splash_depth * 0.35, p.y)) * smoothstep(local_ground_y - splash_depth * 0.75, local_ground_y, p.y);
 	float mist_drift = (p.x - p.y * wind * 0.4) * 8.0 - t * 0.6;
 	float g_mist = vnoise(vec2(mist_drift, p.y * 35.0)) * vnoise(vec2(p.x * 20.0 + t * 0.3, p.y * 20.0));
 	float ground_mist = mist_band * g_mist * 0.28 * splash_amount;
@@ -231,6 +251,7 @@ vec2 splash_layer(vec2 p, float t) {
 void fragment() {
 	float t = TIME * speed + time_offset;
 	vec2 p = UV * vec2(aspect, 1.0);
+	float local_ground_y = get_ground_y(UV.x);
 	float acc = 0.0;
 	int n = layers;
 	for (int i = 0; i < 4; i++) {
@@ -243,14 +264,18 @@ void fragment() {
 		float l = rain_layer(p, cols, spd, dens, t, seed + float(i) * 5.31, wind * 0.9);
 		acc = 1.0 - (1.0 - acc) * (1.0 - clamp(l * a, 0.0, 1.0));
 	}
-	float rain_a = clamp(acc * rain_color.a * 0.8, 0.0, 1.0);
+	// Raindrop streaks stop at the collision surface (cannot fall through the ground)
+	float ground_cut = 1.0 - smoothstep(local_ground_y - 0.010, local_ground_y + 0.003, UV.y);
+	float rain_a = clamp(acc * rain_color.a * 0.8 * ground_cut, 0.0, 1.0);
+
 	// mist veil: low-frequency streaky noise sliding with the rain
 	vec2 mp = vec2((p.x - p.y * wind * 0.5) * 2.5, p.y * 1.2 - t * 0.35);
 	float m = vnoise(mp) * 0.6 + vnoise(mp * 2.3 + 5.0) * 0.4;
-	float mist_a = mist * (0.35 + 0.65 * m) * (0.4 + 0.6 * p.y) * intensity * mist_color.a;
+	float mist_cut = 1.0 - smoothstep(local_ground_y - 0.01, local_ground_y + 0.04, UV.y);
+	float mist_a = mist * (0.35 + 0.65 * m) * (0.4 + 0.6 * p.y) * intensity * mist_color.a * mist_cut;
 
 	vec2 sp = splash_layer(p, t);
-	float sp_a = clamp(sp.x * 1.25, 0.0, 1.0);
+	float sp_a = clamp(sp.x * 1.25 * collision_bounce_intensity, 0.0, 1.0);
 	float a_rain = 1.0 - (1.0 - rain_a) * (1.0 - sp_a);
 	float a_all = 1.0 - (1.0 - a_rain) * (1.0 - mist_a);
 

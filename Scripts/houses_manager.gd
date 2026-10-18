@@ -106,54 +106,10 @@ func _init_houses() -> void:
 	print("[HousesManager] Başlatıldı: ", _managed_houses.size(), " ev aktif. Toplam Can: ", get_total_health())
 
 
-func _physics_process(delta: float) -> void:
-	if _is_game_over or _managed_houses.is_empty():
-		return
-
-	if not _cached_fluid_water or not is_instance_valid(_cached_fluid_water):
-		_cached_fluid_water = _find_fluid_water()
-		if not _cached_fluid_water:
-			return
-
-	var current_time_msec := Time.get_ticks_msec()
-
-	for i in range(_managed_houses.size() - 1, -1, -1):
-		var house: StaticBody2D = _managed_houses[i]
-		if not is_instance_valid(house):
-			_managed_houses.remove_at(i)
-			continue
-
-		# House script'ine sahip evler kendi 3x3 submersion grid kontrolünü house.gd içinde bağımsız yürütür
-		if house is House:
-			continue
-
-		# Kırılma animasyonu oynarken veya yok edilirken yeni hasar almasın
-		if ("is_breaking" in house and house.is_breaking) or ("is_destroyed" in house and house.is_destroyed):
-			_submerged_timers[house] = 0.0
-			continue
-
-		# Hasar bekleme süresi kontrolü (cooldown)
-		if current_time_msec < _damage_cooldown_until.get(house, 0):
-			_submerged_timers[house] = 0.0
-			continue
-
-		var bounds := _get_house_bounds(house)
-		var is_submerged := _check_house_collision_submerged(bounds)
-
-		if is_submerged:
-			var t: float = _submerged_timers.get(house, 0.0) + delta
-			_submerged_timers[house] = t
-
-			# Evin collision'ı belirlenen süre boyunca (0.35s) kesintisiz su altında kaldıysa hasar ver
-			if t >= submersion_duration:
-				_submerged_timers[house] = 0.0
-				_damage_cooldown_until[house] = current_time_msec + int(flood_damage_cooldown * 1000.0)
-				_start_house_destruction(house, bounds)
-		else:
-			# Su çekildiğinde batma sayacını hızla sıfırla (tekil sıçramaların birikmesini önler)
-			var t: float = _submerged_timers.get(house, 0.0)
-			if t > 0.0:
-				_submerged_timers[house] = maxf(t - delta * 2.5, 0.0)
+func _physics_process(_delta: float) -> void:
+	# Evlerin sualtı batma ve yıkılma kontrolleri (seviye collision'ları, %100 sualtı ve 3s kırmızı sayaç)
+	# her evin kendi script'i (house.gd) tarafından bağımsız ve hatasız yönetilir.
+	pass
 
 
 ## Evin collision kutusunun GERÇEKTEN su altında kalıp kalmadığını 3x3 submersion grid ile kontrol eder.
@@ -421,14 +377,32 @@ func _show_game_over_ui() -> void:
 	tw.tween_property(overlay, "color", Color(0.04, 0.02, 0.03, 0.85), 0.8)
 
 
-func _unhandled_input(_event: InputEvent) -> void:
-	# Oyun yeniden başlatma buttons.gd içerisindeki R tuşunu basılı tutma barı ile yönetilir
-	pass
+func is_game_over_showing() -> bool:
+	return _is_game_over and _game_over_ui != null and is_instance_valid(_game_over_ui) and _game_over_ui.visible
+
+
+func hide_game_over_ui() -> void:
+	if _game_over_ui and is_instance_valid(_game_over_ui):
+		_game_over_ui.visible = false
+		_game_over_ui.queue_free()
+		_game_over_ui = null
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if is_game_over_showing() and event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_R or event.physical_keycode == KEY_R:
+			# R tuşuna basıldığı anda oyun bitti ekranını hemen kapat, arkasında karadelik açılsın
+			hide_game_over_ui()
 
 
 func restart_game() -> void:
-	print("[HousesManager] Oyun yeniden başlatılıyor...")
-	get_tree().reload_current_scene()
+	print("[HousesManager] Yeniden Başla tıklandı. Kaybetme ekranı kapatılıyor ve karadelik açılıyor...")
+	hide_game_over_ui()
+	var bht = get_node_or_null("/root/BlackHoleTransition")
+	if bht and bht.has_method("trigger_auto_collapse"):
+		bht.trigger_auto_collapse()
+	else:
+		get_tree().change_scene_to_file("res://Scenes/game.tscn")
 
 
 ## Enkaz parçaları saçar

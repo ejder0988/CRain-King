@@ -65,10 +65,8 @@ signal house_destroyed(house: Node2D)
 @export var enable_pointer_movement: bool = false
 
 @export_group("Submersion / Flood Destruction")
-## Evin yıkılması için gereken minimum su yutulma oranı (0.80 = 3x3 ızgaranın %80'i su altında)
-@export var required_submersion_ratio: float = 0.80
-## Evin su altında kesintisiz kalması gereken süre (0.4 saniye)
-@export var submerge_hold_time: float = 0.4
+## Evin su altında kesintisiz kalması gereken süre (3.0 saniye - bütün collisionlara tam temas gerektirir)
+@export var submerge_hold_time: float = 3.0
 
 @onready var sprite: Sprite2D = get_node_or_null("Sprite2D")
 @onready var anim_sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
@@ -81,12 +79,21 @@ var _base_sprite_height: float = 0.0
 var _base_anim_pos: Vector2 = Vector2.ZERO
 var _base_scene_texture: Texture2D = null
 var _base_pointer_pos: Vector2 = Vector2.ZERO
+var _floor_col_nodes: Array[CollisionShape2D] = []
 
 var is_breaking: bool = false
 var is_destroyed: bool = false
 var _level_label: Label = null
+var _countdown_label: Label = null
+var _last_displayed_sec: int = -1
 var _current_submerge_time: float = 0.0
 var _cached_water: FluidWater = null
+
+
+func _exit_tree() -> void:
+	if _countdown_label and is_instance_valid(_countdown_label):
+		_countdown_label.queue_free()
+		_countdown_label = null
 
 
 func _get_sprite() -> Sprite2D:
@@ -162,69 +169,75 @@ func _physics_process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	if is_destroyed or is_breaking:
-		_current_submerge_time = 0.0
+		_reset_submerge_countdown()
 		return
 
 	var water := _find_fluid_water()
 	if not water:
-		_current_submerge_time = 0.0
+		_reset_submerge_countdown()
 		return
 
-	var house_rect := _get_global_collision_rect()
+	# Evin tabanından en üst çatısına kadar olan toplam alanı ve kat alanları
+	var full_house_rect: Rect2 = get_global_collision_rect()
+	var floor_rects: Array[Rect2] = get_floor_collision_rects()
 
-	# Çift Koşullu Yıkım Sistemi: 1. Dev Tsunami Dalgası Darbesi (Anında Yıkım) VEYA 2. Baraj Tipi Su Birikmesi (Yavaş / Birikmeli)
-	if water.has_method("evaluate_house_hazard"):
-		var hazard: Dictionary = water.evaluate_house_hazard(house_rect)
-
-		# Koşul 1 - Dev Tsunami Dalga Darbesi (Anında Yıkım):
-		# Duvarı aşan dalga cephesi yüksek hızla gelip evin çarpışma alanına çarptığında (>= 5 parçacık, avg_vel.x < -140.0)
-		if hazard.get("is_massive_wave_impact", false):
-			_current_submerge_time = 0.0
-			print("[House] %s dev tsunami dalga darbesiyle ANINDA yıkıldı! (Çarpan Parçacık: %d, Dalga Hızı: %.1f px/s)" % [name, hazard.get("particle_count", 0), hazard.get("avg_vel", Vector2.ZERO).x])
-			destroy_house()
-			return
-
-		# Koşul 2 - Baraj Gibi Su Birikmesi (Yavaş / Birikmeli Yıkım):
-		# Güvenlik Eşiği: Ev çevresindeki parçacık sayısı < 7 ise dam_fill_ratio daima 0.0'dır!
-		var fill_ratio: float = hazard.get("dam_fill_ratio", 0.0)
-		if fill_ratio >= required_submersion_ratio:
-			_current_submerge_time += delta
-			if _current_submerge_time >= submerge_hold_time:
-				_current_submerge_time = 0.0
-				print("[House] %s sular altında kalarak baraj tipi birikmeyle yıkıldı! (Doluluk Oranı: %.2f, Parçacık Sayısı: %d)" % [name, fill_ratio, hazard.get("particle_count", 0)])
-				destroy_house()
-		else:
-			# Su seviyesi çekildiğinde batma sayacını hızla sıfırla (tekil veya geçici temasları engeller)
-			_current_submerge_time = maxf(_current_submerge_time - delta * 3.0, 0.0)
+	# Suların collision'ı evlerin collision'larını %100 içine alıyor mu?
+	var is_100_percent_submerged: bool = false
+	if water.has_method("is_house_100_percent_submerged"):
+		is_100_percent_submerged = water.is_house_100_percent_submerged(full_house_rect, floor_rects)
+	elif water.has_method("are_all_floor_collisions_touched"):
+		is_100_percent_submerged = water.are_all_floor_collisions_touched(floor_rects)
 	else:
-		# Fallback: Klasik 3x3 submersion hesaplaması
-		var submersion_ratio: float = water.get_rect_submersion_ratio(house_rect)
-		if submersion_ratio >= required_submersion_ratio:
-			_current_submerge_time += delta
-			if _current_submerge_time >= submerge_hold_time:
-				_current_submerge_time = 0.0
-				destroy_house()
-		else:
-			_current_submerge_time = maxf(_current_submerge_time - delta * 3.0, 0.0)
+		is_100_percent_submerged = water.get_rect_submersion_ratio(full_house_rect) >= 0.90
+
+	if is_100_percent_submerged:
+		_current_submerge_time += delta
+		_update_countdown_display(_current_submerge_time)
+
+		# 3 saniye bu durumda kalındığında kırılacak
+		if _current_submerge_time >= submerge_hold_time:
+			_reset_submerge_countdown()
+			print("[House] %s suların collision'ı evi 100%% içine alarak 3 saniye durdu, kırılıyor! (Seviye: %d)" % [name, current_level])
+			destroy_house()
+	else:
+		# Dalga gelip giderse veya su seviyesi %100'ün altına düşerse sayaç HER SEFERİNDE SIFIRLANIR
+		_reset_submerge_countdown()
 
 
-## Evin CollisionShape2D düğümünün dünya koordinatlarındaki Rect2 sınırlarını döndürür
+## Evin tüm aktif katlarını (tabandan en üst kata) kapsayan dünya Rect2 sınırlarını döndürür
 func _get_global_collision_rect() -> Rect2:
-	var col := _get_col_shape()
-	if col and col.shape is RectangleShape2D:
-		var rect_shape := col.shape as RectangleShape2D
-		var s: Vector2 = rect_shape.size * col.global_scale.abs()
-		var top_left: Vector2 = col.global_position - (s * 0.5)
-		return Rect2(top_left, s)
-
-	# Fallback: get_bounds()
-	var b := get_bounds()
-	return Rect2(b["left"], b["top"], b["width"], b["height"])
+	_cache_base_dimensions()
+	var floor_h: float = get_floor_height()
+	var total_h: float = float(current_level) * floor_h
+	var s: Vector2 = Vector2(_base_collision_size.x, total_h) * global_scale.abs()
+	var bottom_y: float = _base_collision_pos.y + (_base_collision_size.y * 0.5)
+	var center_local := Vector2(_base_collision_pos.x, bottom_y - (total_h * 0.5))
+	var world_center: Vector2 = to_global(center_local)
+	var top_left: Vector2 = world_center - (s * 0.5)
+	return Rect2(top_left, s)
 
 
 ## Public alias for _get_global_collision_rect
 func get_global_collision_rect() -> Rect2:
 	return _get_global_collision_rect()
+
+
+## Evin tüm aktif katlarının Y pozisyonlarındaki dünya Rect2 sınırlarını döndürür
+func get_floor_collision_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	for i in range(current_level):
+		if i < _floor_col_nodes.size():
+			var col := _floor_col_nodes[i]
+			if col and is_instance_valid(col) and col.shape is RectangleShape2D:
+				var rect_shape := col.shape as RectangleShape2D
+				var s: Vector2 = rect_shape.size * global_scale.abs()
+				var world_pos: Vector2 = to_global(col.position)
+				var top_left: Vector2 = world_pos - (s * 0.5)
+				rects.append(Rect2(top_left, s))
+
+	if rects.is_empty():
+		rects.append(_get_global_collision_rect())
+	return rects
 
 
 func _find_fluid_water() -> FluidWater:
@@ -345,39 +358,124 @@ func _apply_level_sprite() -> void:
 		s.offset.y = -diff_h * 0.5
 
 
-## Collision shape'i seviyeye göre yukarı doğru genişletir (2 katı, 3 katı vb.)
+## Evin her seviyesi kadar Y pozisyonunda collision shape ekler ve günceller
 func _update_collision() -> void:
-	var col := _get_col_shape()
-	if not col or not (col.shape is RectangleShape2D):
+	_cache_base_dimensions()
+	var base_col := _get_col_shape()
+	if not base_col or not (base_col.shape is RectangleShape2D):
 		return
 
-	if not col.shape.resource_local_to_scene:
-		col.shape = col.shape.duplicate()
+	if not _floor_col_nodes.has(base_col):
+		_floor_col_nodes.append(base_col)
+		for child in get_children():
+			if child != base_col and child is CollisionShape2D and child.name.begins_with("FloorCollision_"):
+				if not _floor_col_nodes.has(child):
+					_floor_col_nodes.append(child)
 
-	var rect_shape := col.shape as RectangleShape2D
-	if _base_collision_size == Vector2.ZERO:
-		_base_collision_size = rect_shape.size
-		_base_collision_pos = col.position
+	var floor_h: float = get_floor_height()
+	if not base_col.shape.resource_local_to_scene:
+		base_col.shape = base_col.shape.duplicate()
+	(base_col.shape as RectangleShape2D).size = Vector2(_base_collision_size.x, floor_h)
+	base_col.position = _base_collision_pos
 
-	var bottom_y: float = _base_collision_pos.y + (_base_collision_size.y * 0.5)
+	# Seviyeler kadar (2..current_level) Y pozisyonunda ayrı collision shape'ler ekle
+	while _floor_col_nodes.size() < current_level:
+		var new_col := CollisionShape2D.new()
+		new_col.name = "FloorCollision_%d" % (_floor_col_nodes.size() + 1)
+		var new_shape := RectangleShape2D.new()
+		new_shape.size = Vector2(_base_collision_size.x, floor_h)
+		new_col.shape = new_shape
+		add_child(new_col)
+		_floor_col_nodes.append(new_col)
 
-	# Seviye 1: 1x, Seviye 2: 2x (2 katına çıkar), Seviye 3: 3x vs.
-	var new_height: float = _base_collision_size.y * (1.0 + float(current_level - 1) * collision_height_multiplier)
-	rect_shape.size.y = new_height
+	# Seviyeler kadar Y pozisyonlarını ata ve aktif yap, fazla olanları devre dışı bırak
+	for i in range(_floor_col_nodes.size()):
+		var c := _floor_col_nodes[i]
+		if i < current_level:
+			c.visible = true
+			c.disabled = false
+			c.position = Vector2(_base_collision_pos.x, _base_collision_pos.y - float(i) * floor_h)
+			if c.shape is RectangleShape2D:
+				(c.shape as RectangleShape2D).size = Vector2(_base_collision_size.x, floor_h)
+		else:
+			c.visible = false
+			c.disabled = true
 
-	# Taban çizgisi sabit tutulur, üst kenar yukarı (-Y) doğru uzar
-	col.position.y = bottom_y - (new_height * 0.5)
 
-
-## Kat yüksekliğini hesaplar (AnimatedSprite2D kırılma pozisyonu için)
+## Kat yüksekliğini hesaplar (AnimatedSprite2D kırılma ve kat collision pozisyonları için)
 func get_floor_height() -> float:
 	if floor_height > 0.0:
 		return floor_height
-	if _base_sprite_height > 0.0:
-		return _base_sprite_height
 	if _base_collision_size.y > 0.0:
 		return _base_collision_size.y
-	return 20.0
+	return 11.0
+
+
+## 3 saniyelik kırmızı sayaç Label'ını oluşturur (3, 2, 1)
+func _create_countdown_label() -> void:
+	if _countdown_label and is_instance_valid(_countdown_label):
+		return
+
+	_countdown_label = Label.new()
+	_countdown_label.name = "SubmergeCountdownLabel"
+	_countdown_label.top_level = true
+	_countdown_label.z_index = 25
+	_countdown_label.visible = false
+	_countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_countdown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_countdown_label.custom_minimum_size = Vector2(80, 50)
+	_countdown_label.size = Vector2(80, 50)
+
+	# Label styling: Parlak kırmızı, kalın siyah kenarlık (outline)
+	_countdown_label.add_theme_color_override("font_color", Color(1.0, 0.15, 0.15, 1.0))
+	_countdown_label.add_theme_color_override("font_outline_color", Color(0.04, 0.0, 0.0, 1.0))
+	_countdown_label.add_theme_constant_override("outline_size", 10)
+	_countdown_label.add_theme_font_size_override("font_size", 36)
+
+	add_child(_countdown_label)
+	update_countdown_label_position()
+
+
+## Sayacın dünya koordinatlarındaki pozisyonunu evin çatısının hemen üzerine hizalar
+func update_countdown_label_position() -> void:
+	if not _countdown_label or not is_instance_valid(_countdown_label):
+		return
+	var house_rect: Rect2 = get_global_collision_rect()
+	var center_x: float = house_rect.get_center().x
+	var roof_y: float = house_rect.position.y
+	_countdown_label.global_position = Vector2(center_x - (_countdown_label.size.x * 0.5), roof_y - 52.0)
+
+
+## Sualtı kırmızı sayacını günceller: 3 -> 2 -> 1
+func _update_countdown_display(elapsed_time: float) -> void:
+	if not _countdown_label or not is_instance_valid(_countdown_label):
+		_create_countdown_label()
+
+	update_countdown_label_position()
+
+	var remaining: float = submerge_hold_time - elapsed_time
+	var display_sec: int = clampi(int(ceilf(remaining)), 1, 3)
+
+	if not _countdown_label.visible or _last_displayed_sec != display_sec:
+		_last_displayed_sec = display_sec
+		_countdown_label.text = str(display_sec)
+		_countdown_label.visible = true
+
+		# Sayı her değiştiğinde (3 -> 2 -> 1) dikkat çekici pop/pulse animasyonu
+		var tw := create_tween()
+		tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_countdown_label.pivot_offset = _countdown_label.size * 0.5
+		_countdown_label.scale = Vector2(1.4, 1.4)
+		tw.tween_property(_countdown_label, "scale", Vector2.ONE, 0.18)
+
+
+## Su çekildiğinde veya dalga geçtiğinde sayacı derhal sıfırlar ve gizler
+func _reset_submerge_countdown() -> void:
+	_current_submerge_time = 0.0
+	_last_displayed_sec = -1
+	if _countdown_label and is_instance_valid(_countdown_label):
+		_countdown_label.visible = false
+		_countdown_label.text = ""
 
 
 ## Evi bir üst seviyeye yükseltir
@@ -481,6 +579,7 @@ func _on_roof_break_finished(broken_floor: int) -> void:
 
 ## Seviye 1 için tam yıkılma (Önce Sprite2D kapanır, sonra kırılma animasyonu oynatılır)
 func _collapse_level_1() -> void:
+	_reset_submerge_countdown()
 	is_breaking = true
 	is_destroyed = true
 	current_level = 0

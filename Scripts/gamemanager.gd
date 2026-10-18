@@ -300,6 +300,7 @@ func _get_cheat_sheet_bbcode() -> String:
 		" [color=#e0e0e0][b][A / D][/b][/color]    Vinç Arabası İleri / Geri\n" +
 		" [color=#e0e0e0][b][SPACE][/b][/color]  Payload İndir / Kaldır / Bırak\n" +
 		" [color=#e0e0e0][b][SHIFT][/b][/color]  Fabrikayı Yükselt (Satın Al)\n" +
+		" [color=#e0e0e0][b][F11][/b][/color]    Tam Ekran / Pencere Modu\n" +
 		" [color=#e0e0e0][b][ESC][/b][/color]    Ses/Müzik Menüsü (Basılı Tut: Çık)"
 	)
 
@@ -422,9 +423,22 @@ func _show_debug_feedback(is_active: bool) -> void:
 		if _mini_panel_btn:
 			_mini_panel_btn.visible = false
 
+func toggle_fullscreen() -> void:
+	var mode := DisplayServer.window_get_mode()
+	if mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
+		# F11 Key: Toggle Fullscreen / Windowed mode
+		if event.keycode == KEY_F11:
+			get_viewport().set_input_as_handled()
+			toggle_fullscreen()
+			return
+
 		# F6 Key: Flip-flop toggle debug mode
 		if event.keycode == debug_toggle_key or event.keycode == KEY_F6:
 			get_viewport().set_input_as_handled()

@@ -523,10 +523,10 @@ func _evaluate_flood_survival_and_reward() -> void:
 	if ws:
 		ws.set_weather(WeatherSystem.WeatherType.CLEAR, 2.5)
 
-	# Suları sakinleştir ve taşkın artıklarını temizle (havuz dengesini koru: ~160 parçacık)
+	# Suları sakinleştir (dalgalar ve taşan sular silinmez, yerinde kalır)
 	var fw: FluidWater = _find_fluid_water()
 	if fw and fw.has_method("calm_and_cleanup_post_surge"):
-		fw.calm_and_cleanup_post_surge(160)
+		fw.calm_and_cleanup_post_surge()
 
 	# Evler hala ayaktaysa çarpan kadar para ver ve UI'ı göster
 	if standing_houses > 0 and total_levels > 0:

@@ -3,6 +3,12 @@
 [ext_resource type="Texture2D" uid="uid://ddho0o83i5h6i" path="res://Sprites/rock.png" id="1_rock"]
 [ext_resource type="Script" uid="uid://tqey56bqdgmg" path="res://Scripts/rock.gd" id="2_rock_script"]
 [ext_resource type="AudioStream" uid="uid://75xglqmt7l0a" path="res://Sounds/kaya_tuğla bütün etkileşimler.wav" id="2_vd8au"]
+[ext_resource type="Shader" uid="uid://bdyxgi7lrtr1i" path="res://Shaders/outline.gdshader" id="3_1rhfe"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ym3tv"]
+shader = ExtResource("3_1rhfe")
+shader_parameter/line_color = Color(0, 0, 0, 1)
+shader_parameter/line_thickness = 1.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_1"]
 radius = 30.0
@@ -16,6 +22,7 @@ script = ExtResource("2_rock_script")
 splash_sound = ExtResource("2_vd8au")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1603054389]
+material = SubResource("ShaderMaterial_ym3tv")
 scale = Vector2(4.8, 4.8)
 texture = ExtResource("1_rock")
 

@@ -21,6 +21,7 @@
 [ext_resource type="Texture2D" uid="uid://clssaaosbshyx" path="res://Sprites/Buttons.png" id="13_oeip8"]
 [ext_resource type="Script" uid="uid://8pp5jjyfaa7p" path="res://Scripts/buttons.gd" id="15_mucmn"]
 [ext_resource type="Shader" uid="uid://b2eeoxbloehs3" path="res://Shaders/cloud.gdshader" id="15_nb51f"]
+[ext_resource type="Texture2D" uid="uid://crg64untg1qj7" path="res://Sprites/gider.png" id="17_bwj6o"]
 [ext_resource type="Texture2D" uid="uid://bnli5t31822de" path="res://Sprites/Background/factory.png" id="17_ewbju"]
 [ext_resource type="PackedScene" uid="uid://dtcg1cfq3571p" path="res://Scenes/fluid_water.tscn" id="18_fluidwater"]
 [ext_resource type="AudioStream" uid="uid://cgavlxdcjacx1" path="res://Sounds/PayloadCatch.wav" id="18_oeip8"]
@@ -96,7 +97,7 @@ atlas = ExtResource("25_22asu")
 region = Rect2(133, 3, 22, 61)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ym3tv"]
-size = Vector2(17.617035, 10.97876)
+size = Vector2(17.617035, 11.23407)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_8lpvs"]
 atlas = ExtResource("32_ese38")
@@ -311,30 +312,42 @@ animations = [{
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_57qmd"]
 a = Vector2(-140.68083, 27.574448)
-b = Vector2(113.617035, 28.340408)
+b = Vector2(106.72342, 27.829788)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_exi56"]
 a = Vector2(30.893631, 36.765945)
 b = Vector2(45.446815, 29.617004)
 
-[sub_resource type="SegmentShape2D" id="SegmentShape2D_7t8sx"]
-a = Vector2(13.531914, 29.106384)
-b = Vector2(54.127663, 28.851059)
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_bu0y5"]
+a = Vector2(10.468086, 30.893616)
+b = Vector2(34.72341, 23.489365)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_6a4tp"]
+a = Vector2(4.085129, -4.0851135)
+b = Vector2(4.085106, 65.872345)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_mg4q0"]
-a = Vector2(15.829788, 35.999985)
+a = Vector2(23.489365, 35.48935)
 b = Vector2(-29.1064, 15.574448)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_yf5fn"]
-a = Vector2(17.361694, 3.8297882)
-b = Vector2(49.0213, 3.574463)
+a = Vector2(10.978729, 4.0850983)
+b = Vector2(42.127686, 7.9148865)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_ym3tv"]
+a = Vector2(12, 4.0851135)
+b = Vector2(24.51062, 7.9149017)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_bwj6o"]
+a = Vector2(11.48938, 0.7659607)
+b = Vector2(27.574463, 2.2978668)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_nnt18"]
-a = Vector2(34.21277, 20.936172)
-b = Vector2(57.446808, 30.893616)
+a = Vector2(44.170227, 28.340424)
+b = Vector2(53.617035, 30.63829)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_ewbju"]
-a = Vector2(67.91489, 26.297882)
+a = Vector2(77.361694, 28.340439)
 b = Vector2(89.361694, 33.446808)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_85qyi"]
@@ -347,7 +360,11 @@ b = Vector2(477.19153, 85.531906)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_oeip8"]
 a = Vector2(-29.1064, 9.957428)
-b = Vector2(-88.34041, -42.63829)
+b = Vector2(-76.08509, -37.53192)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_f3c8l"]
+a = Vector2(-16.851065, 17.61702)
+b = Vector2(-16.595745, -85.78723)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_7nbq1"]
 a = Vector2(500.68082, 79.91487)
@@ -737,8 +754,6 @@ collision_layer = 0
 collision_mask = 0
 script = ExtResource("31_oeip8")
 level_sprites = Array[Texture2D]([SubResource("AtlasTexture_j0obb"), SubResource("AtlasTexture_fh6x0"), SubResource("AtlasTexture_kcoun"), SubResource("AtlasTexture_jegl3"), SubResource("AtlasTexture_l4kai")])
-required_submersion_ratio = 0.85
-submerge_hold_time = 0.3
 
 [node name="PointerSprite2D" type="Sprite2D" parent="Houses/House1" unique_id=1204275331]
 visible = false
@@ -747,9 +762,8 @@ scale = Vector2(1.3723407, 1)
 texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House1" unique_id=819943257]
-position = Vector2(-0.12768555, 2.9361877)
+position = Vector2(-0.12768555, 2.8085327)
 shape = SubResource("RectangleShape2D_ym3tv")
-disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House1" unique_id=1111773724]
 texture = SubResource("AtlasTexture_j0obb")
@@ -762,27 +776,25 @@ frame = 4
 frame_progress = 1.0
 
 [node name="House2" type="StaticBody2D" parent="Houses" unique_id=1141434853]
-position = Vector2(-202.97873, 10.212766)
+position = Vector2(-202.97873, 4.340425)
 collision_layer = 0
 collision_mask = 0
 script = ExtResource("31_oeip8")
 level_sprites = Array[Texture2D]([SubResource("AtlasTexture_j0obb"), SubResource("AtlasTexture_fh6x0"), SubResource("AtlasTexture_kcoun"), SubResource("AtlasTexture_jegl3"), SubResource("AtlasTexture_l4kai")])
-required_submersion_ratio = 0.85
-submerge_hold_time = 0.3
+current_level = 2
 
 [node name="PointerSprite2D" type="Sprite2D" parent="Houses/House2" unique_id=2066932845]
 visible = false
-position = Vector2(-1.5258789e-05, -18.893616)
+position = Vector2(-1.5258789e-05, -29.893616)
 scale = Vector2(1.3723407, 1)
 texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House2" unique_id=528198923]
 position = Vector2(-0.12768555, 2.9361877)
 shape = SubResource("RectangleShape2D_bwj6o")
-disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House2" unique_id=908321631]
-texture = SubResource("AtlasTexture_j0obb")
+texture = SubResource("AtlasTexture_fh6x0")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Houses/House2" unique_id=1006492160]
 visible = false
@@ -798,8 +810,6 @@ collision_mask = 0
 script = ExtResource("31_oeip8")
 flip_x = true
 level_sprites = Array[Texture2D]([SubResource("AtlasTexture_j0obb"), SubResource("AtlasTexture_fh6x0"), SubResource("AtlasTexture_kcoun"), SubResource("AtlasTexture_jegl3"), SubResource("AtlasTexture_l4kai")])
-required_submersion_ratio = 0.85
-submerge_hold_time = 0.3
 
 [node name="PointerSprite2D" type="Sprite2D" parent="Houses/House3" unique_id=1081122553]
 visible = false
@@ -810,7 +820,6 @@ texture = ExtResource("11_d3cha")
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House3" unique_id=625670738]
 position = Vector2(-0.12768555, 2.9361877)
 shape = SubResource("RectangleShape2D_f3c8l")
-disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House3" unique_id=1131892629]
 texture = SubResource("AtlasTexture_j0obb")
@@ -862,20 +871,68 @@ shape = SubResource("SegmentShape2D_57qmd")
 position = Vector2(-154.21277, 1.5318995)
 shape = SubResource("SegmentShape2D_exi56")
 
-[node name="CollisionShape2D9" type="CollisionShape2D" parent="GroundCollions" unique_id=1594591180]
-position = Vector2(-175.14893, 8.936154)
-shape = SubResource("SegmentShape2D_7t8sx")
+[node name="CollisionShape2D39" type="CollisionShape2D" parent="GroundCollions" unique_id=1488458442]
+position = Vector2(-145.2766, 10.21275)
+shape = SubResource("SegmentShape2D_bu0y5")
+
+[node name="CollisionShape2D40" type="CollisionShape2D" parent="GroundCollions" unique_id=1275010176]
+position = Vector2(-144.51064, 11.999985)
+shape = SubResource("SegmentShape2D_bu0y5")
+
+[node name="CollisionShape2D41" type="CollisionShape2D" parent="GroundCollions" unique_id=302189688]
+position = Vector2(-144.51064, 14.8084955)
+shape = SubResource("SegmentShape2D_bu0y5")
+
+[node name="CollisionShape2D42" type="CollisionShape2D" parent="GroundCollions" unique_id=121368059]
+position = Vector2(-137.87234, 44.170193)
+shape = SubResource("SegmentShape2D_6a4tp")
+
+[node name="CollisionShape2D43" type="CollisionShape2D" parent="GroundCollions" unique_id=1008612638]
+position = Vector2(-156.25531, 43.65956)
+shape = SubResource("SegmentShape2D_6a4tp")
 
 [node name="CollisionShape2D10" type="CollisionShape2D" parent="GroundCollions" unique_id=1426561982]
 position = Vector2(-175.14893, 2.5531914)
 shape = SubResource("SegmentShape2D_mg4q0")
 
 [node name="CollisionShape2D2" type="CollisionShape2D" parent="GroundCollions" unique_id=1824992915]
-position = Vector2(124.85104, 27.829771)
+position = Vector2(125.617004, 27.829771)
 shape = SubResource("SegmentShape2D_yf5fn")
 
+[node name="CollisionShape2D16" type="CollisionShape2D" parent="GroundCollions" unique_id=312508785]
+position = Vector2(154.97873, 31.404236)
+shape = SubResource("SegmentShape2D_ym3tv")
+
+[node name="CollisionShape2D25" type="CollisionShape2D" parent="GroundCollions" unique_id=685841264]
+position = Vector2(168, 38.553177)
+shape = SubResource("SegmentShape2D_bwj6o")
+
 [node name="CollisionShape2D3" type="CollisionShape2D" parent="GroundCollions" unique_id=1036217469]
-position = Vector2(138.38297, 10.468066)
+position = Vector2(151.40425, 12.510619)
+shape = SubResource("SegmentShape2D_nnt18")
+
+[node name="CollisionShape2D32" type="CollisionShape2D" parent="GroundCollions" unique_id=511089645]
+position = Vector2(155.23405, 34.468067)
+shape = SubResource("SegmentShape2D_ym3tv")
+
+[node name="CollisionShape2D33" type="CollisionShape2D" parent="GroundCollions" unique_id=454221846]
+position = Vector2(168.25533, 41.61701)
+shape = SubResource("SegmentShape2D_bwj6o")
+
+[node name="CollisionShape2D34" type="CollisionShape2D" parent="GroundCollions" unique_id=158854263]
+position = Vector2(151.65958, 15.57445)
+shape = SubResource("SegmentShape2D_nnt18")
+
+[node name="CollisionShape2D35" type="CollisionShape2D" parent="GroundCollions" unique_id=369754551]
+position = Vector2(154.97873, 37.27658)
+shape = SubResource("SegmentShape2D_ym3tv")
+
+[node name="CollisionShape2D36" type="CollisionShape2D" parent="GroundCollions" unique_id=1618049808]
+position = Vector2(168, 44.42552)
+shape = SubResource("SegmentShape2D_bwj6o")
+
+[node name="CollisionShape2D37" type="CollisionShape2D" parent="GroundCollions" unique_id=918874593]
+position = Vector2(151.40425, 18.38296)
 shape = SubResource("SegmentShape2D_nnt18")
 
 [node name="CollisionShape2D4" type="CollisionShape2D" parent="GroundCollions" unique_id=293140187]
@@ -898,10 +955,6 @@ shape = SubResource("SegmentShape2D_57qmd")
 position = Vector2(-153.4468, 4.34041)
 shape = SubResource("SegmentShape2D_exi56")
 
-[node name="CollisionShape2D13" type="CollisionShape2D" parent="GroundCollions" unique_id=1005929543]
-position = Vector2(-174.38295, 11.744665)
-shape = SubResource("SegmentShape2D_7t8sx")
-
 [node name="CollisionShape2D14" type="CollisionShape2D" parent="GroundCollions" unique_id=293486053]
 position = Vector2(-174.38295, 5.361702)
 shape = SubResource("SegmentShape2D_mg4q0")
@@ -909,10 +962,6 @@ shape = SubResource("SegmentShape2D_mg4q0")
 [node name="CollisionShape2D15" type="CollisionShape2D" parent="GroundCollions" unique_id=1948761353]
 position = Vector2(125.61702, 30.638283)
 shape = SubResource("SegmentShape2D_yf5fn")
-
-[node name="CollisionShape2D16" type="CollisionShape2D" parent="GroundCollions" unique_id=1965523463]
-position = Vector2(139.14894, 13.276577)
-shape = SubResource("SegmentShape2D_nnt18")
 
 [node name="CollisionShape2D17" type="CollisionShape2D" parent="GroundCollions" unique_id=1542197107]
 position = Vector2(127.65958, 17.617006)
@@ -934,10 +983,6 @@ shape = SubResource("SegmentShape2D_57qmd")
 position = Vector2(-153.44681, 7.148921)
 shape = SubResource("SegmentShape2D_exi56")
 
-[node name="CollisionShape2D22" type="CollisionShape2D" parent="GroundCollions" unique_id=417831913]
-position = Vector2(-174.38297, 14.553176)
-shape = SubResource("SegmentShape2D_7t8sx")
-
 [node name="CollisionShape2D23" type="CollisionShape2D" parent="GroundCollions" unique_id=2145383243]
 position = Vector2(-174.38297, 8.170213)
 shape = SubResource("SegmentShape2D_mg4q0")
@@ -946,6 +991,14 @@ shape = SubResource("SegmentShape2D_mg4q0")
 position = Vector2(-174.38297, 8.170213)
 shape = SubResource("SegmentShape2D_oeip8")
 
+[node name="CollisionShape2D38" type="CollisionShape2D" parent="GroundCollions" unique_id=1657146097]
+position = Vector2(-174.38297, 8.170213)
+shape = SubResource("SegmentShape2D_oeip8")
+
+[node name="CollisionShape2D44" type="CollisionShape2D" parent="GroundCollions" unique_id=16953907]
+position = Vector2(-230.55319, -43.914917)
+shape = SubResource("SegmentShape2D_f3c8l")
+
 [node name="CollisionShape2D31" type="CollisionShape2D" parent="GroundCollions" unique_id=2003759527]
 position = Vector2(-173.36171, 12.510622)
 shape = SubResource("SegmentShape2D_oeip8")
@@ -953,10 +1006,6 @@ shape = SubResource("SegmentShape2D_oeip8")
 [node name="CollisionShape2D24" type="CollisionShape2D" parent="GroundCollions" unique_id=2035586217]
 position = Vector2(125.617004, 33.446793)
 shape = SubResource("SegmentShape2D_yf5fn")
-
-[node name="CollisionShape2D25" type="CollisionShape2D" parent="GroundCollions" unique_id=1793517734]
-position = Vector2(139.14893, 16.085087)
-shape = SubResource("SegmentShape2D_nnt18")
 
 [node name="CollisionShape2D26" type="CollisionShape2D" parent="GroundCollions" unique_id=1312664554]
 position = Vector2(127.65956, 20.425516)
@@ -977,6 +1026,26 @@ shape = SubResource("SegmentShape2D_7nbq1")
 [node name="CollisionShape2D29" type="CollisionShape2D" parent="GroundCollions" unique_id=1992042784]
 position = Vector2(-208.85107, -26.553192)
 shape = SubResource("SegmentShape2D_7nbq1")
+
+[node name="Gider" type="Sprite2D" parent="GroundCollions" unique_id=1750774529]
+position = Vector2(-142.7234, 66.38296)
+scale = Vector2(1.7393615, 1.6062453)
+texture = ExtResource("17_bwj6o")
+
+[node name="Gider2" type="Sprite2D" parent="GroundCollions" unique_id=2002588220]
+position = Vector2(-134.80852, 54.638275)
+scale = Vector2(0.8098396, 1.005285)
+texture = ExtResource("17_bwj6o")
+
+[node name="Gider3" type="Sprite2D" parent="GroundCollions" unique_id=1960272867]
+position = Vector2(-134.80852, 54.638275)
+scale = Vector2(0.8098396, 1.005285)
+texture = ExtResource("17_bwj6o")
+
+[node name="Gider4" type="Sprite2D" parent="GroundCollions" unique_id=2040114339]
+position = Vector2(-151.91487, 54.638275)
+scale = Vector2(0.8098396, 1.005285)
+texture = ExtResource("17_bwj6o")
 
 [node name="Buttons" type="Node2D" parent="." unique_id=1082094317]
 script = ExtResource("15_mucmn")
@@ -1164,8 +1233,8 @@ position = Vector2(2295, 527)
 initial_drops = 50
 
 [node name="StoneWall" parent="." unique_id=1987654321 instance=ExtResource("27_stonewall")]
-position = Vector2(1536, 792)
+position = Vector2(1455, 771)
 scale = Vector2(2, 2)
-current_stage = 1
+current_stage = 2
 wall_build_sound = ExtResource("36_ym3tv")
 laugh_sounds = Array[AudioStream]([ExtResource("37_bwj6o"), ExtResource("38_f3c8l"), ExtResource("39_bu0y5")])

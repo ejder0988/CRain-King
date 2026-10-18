@@ -62,6 +62,16 @@ const PRESET_LIGHTNING := preload("res://addons/weather_fx_2d_lite/presets/light
 @export var downpour_splash_amount: float = 0.65      ## Splash density and intensity for Downpour
 @export var night_storm_splash_amount: float = 0.85   ## Splash density and intensity for Night Storm
 
+@export_group("Ground Collision Impact")
+## Target collision node for raindrops to hit (defaults to GroundCollions in the current scene)
+@export var ground_collision_target: NodePath = NodePath("../GroundCollions")
+## Enable collision detection so raindrops hit and splash directly on the front ground layer
+@export var enable_ground_collision: bool = true
+## Multiplier for splash bounce droplet height and splash visibility on collision
+@export_range(0.5, 3.0, 0.1) var collision_bounce_intensity: float = 1.45
+## Optional second collision node (e.g. StoneWall) to also receive rain splashes
+@export var extra_collision_target: NodePath = NodePath("../StoneWall")
+
 @export_group("Controls & Debug UI")
 @export var enable_hotkeys: bool = true           ## 1: Downpour, 2: Night Storm, 3: Clear, L: Strike
 @export var show_debug_hint: bool = true          ## Display small controls badge on start
@@ -92,6 +102,7 @@ var _downpour_audio_tween: Tween
 var _night_storm_audio_tween: Tween
 var _audio_delay_tween: Tween
 var _rain_transition_tween: Tween
+var _ground_height_texture: ImageTexture = null
 
 
 func _ready() -> void:
@@ -101,6 +112,8 @@ func _ready() -> void:
 	visible = true
 	
 	_setup_internal_nodes()
+	build_ground_collision_profile()
+	call_deferred("build_ground_collision_profile")
 	_apply_weather_state(current_weather, 0.0)
 	_strike_timer = randf_range(2.0, 3.5)
 	print("[WeatherSystem] Ready! Weather mode: ", current_weather, " (0: Night Storm, 1: Downpour, 2: Clear)")
