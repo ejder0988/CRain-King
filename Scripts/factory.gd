@@ -49,6 +49,7 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 ## PackedScene for Event Rock (Enderpearl - 5s timer)
 @export var event_rock_scene: PackedScene = preload("res://Scenes/event_rock.tscn")
 ## Probability of spawning an Event Rock (0.25 = 25%)
+@export_range(0.0, 1.0, 0.05) var event_rock_chance: float = 0.25
 ## Global position where normal brick is spawned
 @export var spawn_position: Vector2 = Vector2(383, 862)
 

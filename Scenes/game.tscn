@@ -1,5 +1,7 @@
 [gd_scene format=3 uid="uid://dluhjc5wceud7"]
 
+[ext_resource type="Script" uid="uid://cesigrerdd8rn" path="res://Scripts/game.gd" id="1_game"]
+[ext_resource type="AudioStream" uid="uid://bqcvv1hyujmew" path="res://Sounds/Oyun içi.mp3" id="2_d3cha"]
 [ext_resource type="Texture2D" uid="uid://o2gnauri6qru" path="res://Sprites/Background/LandLayer4.png" id="2_exi56"]
 [ext_resource type="Texture2D" uid="uid://b23a8sw2hpco2" path="res://Sprites/Background/ground.png" id="2_nnt18"]
 [ext_resource type="Texture2D" uid="uid://c4p0o03d1sr6p" path="res://Sprites/Background/LandLayer3.png" id="3_7t8sx"]
@@ -89,7 +91,7 @@ region = Rect2(101, 14, 22, 50)
 atlas = ExtResource("25_22asu")
 region = Rect2(133, 3, 22, 61)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_cwurv"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_d3cha"]
 size = Vector2(17.617035, 10.97876)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_8lpvs"]
@@ -135,10 +137,10 @@ animations = [{
 "speed": 10.0
 }]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_mucmn"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_i26dy"]
 size = Vector2(17.617035, 10.97876)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_8m3t6"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_lmoi6"]
 size = Vector2(17.617035, 10.97876)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_mucmn"]
@@ -658,6 +660,11 @@ shader_parameter/center_pos = Vector2(0.5, 0)
 shader_parameter/position_impact = 0.75
 
 [node name="game" type="Node2D" unique_id=1131706611]
+script = ExtResource("1_game")
+
+[node name="GameMusicPlayer" type="AudioStreamPlayer" parent="." unique_id=987654330]
+stream = ExtResource("2_d3cha")
+pitch_scale = 0.42
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=987654321]
 position = Vector2(960, 540)
@@ -735,7 +742,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House1" unique_id=819943257]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_cwurv")
+shape = SubResource("RectangleShape2D_d3cha")
 disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House1" unique_id=1111773724]
@@ -763,7 +770,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House2" unique_id=528198923]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_mucmn")
+shape = SubResource("RectangleShape2D_i26dy")
 disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House2" unique_id=908321631]
@@ -791,7 +798,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House3" unique_id=625670738]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_8m3t6")
+shape = SubResource("RectangleShape2D_lmoi6")
 disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House3" unique_id=1131892629]
@@ -1096,9 +1103,10 @@ linear_damp = 0.4
 angular_damp = 2.0
 
 [node name="PayloadAnimationSprite2d" type="AnimatedSprite2D" parent="Crane/Payload" unique_id=488710238]
+position = Vector2(0, 2)
 scale = Vector2(2.6953125, 2.6953125)
 sprite_frames = SubResource("SpriteFrames_yf5fn")
-animation = &"catch"
+autoplay = "default"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Crane/Payload" unique_id=1812875115]
 shape = SubResource("CapsuleShape2D_hook")
@@ -1145,3 +1153,4 @@ initial_drops = 25
 [node name="StoneWall" parent="." unique_id=1987654321 instance=ExtResource("27_stonewall")]
 position = Vector2(1540, 773)
 scale = Vector2(2, 2)
+current_stage = 1

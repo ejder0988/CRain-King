@@ -136,18 +136,18 @@ var _event_boost_timer: float = 0.0
 @export var water_min_scoop_particles: int = 4
 
 @export_group("Pickup Juice & Screen Shake")
-## Enable subtle screen shake when payload catches/picks up an item
+## Enable screen shake when payload catches/picks up an item
 @export var enable_pickup_shake: bool = true
-## Screen shake intensity in pixels (subtle = 3.5 to 5.0 px)
-@export var pickup_shake_intensity: float = 4.0
+## Screen shake intensity in pixels (increased for punchier impact: default 9.0 px)
+@export var pickup_shake_intensity: float = 9.0
 ## Duration of the shake in seconds
-@export var pickup_shake_duration: float = 0.22
+@export var pickup_shake_duration: float = 0.32
 ## Enable hit stop micro-pause when grabbing cargo or water
 @export var enable_hit_stop: bool = true
-## Duration of hit stop in seconds
-@export var hit_stop_duration: float = 0.075
-## Engine time scale during hit stop
-@export var hit_stop_time_scale: float = 0.05
+## Duration of hit stop in seconds (increased for more noticeable impact: default 0.15s)
+@export var hit_stop_duration: float = 0.15
+## Engine time scale during hit stop (deep freeze frame)
+@export var hit_stop_time_scale: float = 0.02
 
 @export_group("Visual Rendering")
 @export var rope_segments: int = 12 ## Curve resolution segments when cable is slack
@@ -402,15 +402,8 @@ func _ready() -> void:
 	if payload_sprite:
 		if not payload_sprite.animation_finished.is_connected(_on_payload_animation_finished):
 			payload_sprite.animation_finished.connect(_on_payload_animation_finished)
-		if payload_sprite.sprite_frames:
-			if payload_sprite.sprite_frames.has_animation("catch"):
-				payload_sprite.sprite_frames.set_animation_loop("catch", true)
-			if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
-				payload_sprite.play("better_catch")
-			elif payload_sprite.sprite_frames.has_animation("catch"):
-				payload_sprite.play("catch")
-			elif payload_sprite.sprite_frames.has_animation("default"):
-				payload_sprite.play("default")
+		if payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
+			payload_sprite.play("default")
 
 	# Crane body AnimatedSprite2D signal connections & default animation
 	if crane_body_sprite:
@@ -459,20 +452,12 @@ func _physics_process(delta: float) -> void:
 	# Manage temporary Event Rock / Upgrade Rock rocket boost
 	if is_event_boost_active:
 		_event_boost_timer -= delta
-		if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("better_catch"):
-			if payload_sprite.animation != &"better_catch":
-				payload_sprite.play("better_catch")
 		if _rocket_visual:
 			_rocket_visual.set_firing(true)
 			_rocket_visual.flame_scale = 1.45 if (is_descending or trolley_velocity.length() > 60.0) else 1.0
 
 		if _event_boost_timer <= 0.0:
 			_end_event_boost()
-	else:
-		# Upgrade rock olmadığında olacak olan animasyon catch (cargo taşımıyorsa)
-		if not is_carrying_cargo and not is_carrying_water and payload_sprite and payload_sprite.sprite_frames:
-			if payload_sprite.animation != &"catch" and payload_sprite.sprite_frames.has_animation("catch"):
-				payload_sprite.play("catch")
 
 	# Handle payload tier upgrade input (K key) - Debug only: triggers temporary boost
 	var gm = get_node_or_null("/root/GameManager")
@@ -1049,13 +1034,12 @@ func _update_deployed_trajectory(delta: float) -> void:
 		if _aim_trajectory:
 			_aim_trajectory.play_reset_pop()
 
-		# When returning to top, ensure catch is playing unless boosted
-		if not is_event_boost_active:
-			if not is_carrying_cargo and not is_carrying_water and payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("catch"):
-				payload_sprite.play("catch")
-		else:
-			if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("better_catch"):
-				payload_sprite.play("better_catch")
+		# When returning to top, ensure default animation is playing (unless holding cargo!)
+		if payload_sprite and payload_sprite.sprite_frames:
+			if (is_carrying_cargo or is_carrying_water) and payload_sprite.sprite_frames.has_animation("hold"):
+				payload_sprite.play("hold")
+			elif payload_sprite.sprite_frames.has_animation("default"):
+				payload_sprite.play("default")
 
 		# Resume swinging seamlessly from current angle
 		current_swing_angle = locked_aim_angle
@@ -1290,12 +1274,8 @@ func _resolve_landing() -> void:
 		has_resolved_landing = true
 		target_rope_length = current_rope_length
 
-		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
-			payload_sprite.play("better_catch")
-		elif is_carrying_cargo and payload_sprite.sprite_frames.has_animation("hold"):
+		if is_carrying_cargo and payload_sprite.sprite_frames.has_animation("hold"):
 			payload_sprite.play("hold")
-		elif payload_sprite.sprite_frames.has_animation("catch"):
-			payload_sprite.play("catch")
 		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 
@@ -1308,11 +1288,7 @@ func _resolve_landing() -> void:
 						target_rope_length = min_rope_length
 				)
 	else:
-		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
-			payload_sprite.play("better_catch")
-		elif payload_sprite.sprite_frames.has_animation("catch"):
-			payload_sprite.play("catch")
-		elif payload_sprite.sprite_frames.has_animation("default"):
+		if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 		if auto_retract_after_landing and is_inside_tree():
 			var tree := get_tree()
@@ -1363,12 +1339,8 @@ func pickup_cargo_direct(cargo: RigidBody2D) -> bool:
 	_update_factory_pointer()
 
 	if payload_sprite and payload_sprite.sprite_frames:
-		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
-			payload_sprite.play("better_catch")
-		elif payload_sprite.sprite_frames.has_animation("hold"):
+		if payload_sprite.sprite_frames.has_animation("hold"):
 			payload_sprite.play("hold")
-		elif payload_sprite.sprite_frames.has_animation("catch"):
-			payload_sprite.play("catch")
 		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 
@@ -1492,14 +1464,9 @@ func _release_cargo() -> void:
 	if was_house_upgrade_cargo:
 		_monitor_free_upgrade_rock(released_ref)
 
-	# Open hook back to catch (or better_catch if boosted)
-	if payload_sprite and payload_sprite.sprite_frames:
-		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
-			payload_sprite.play("better_catch")
-		elif payload_sprite.sprite_frames.has_animation("catch"):
-			payload_sprite.play("catch")
-		elif payload_sprite.sprite_frames.has_animation("default"):
-			payload_sprite.play("default")
+	# Open hook back to default animation
+	if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
+		payload_sprite.play("default")
 
 	# Fling juice: camera recoil punch + claw squash recoil
 	_trigger_cargo_fling_juice(release_velocity)
@@ -1960,26 +1927,35 @@ func _on_payload_animation_finished() -> void:
 	if current_anim == &"catch_start":
 		if (is_event_boost_active or payload_tier >= 2) and payload_sprite.sprite_frames.has_animation("better_catch"):
 			payload_sprite.play("better_catch")
-		elif payload_sprite.sprite_frames.has_animation("catch"):
-			payload_sprite.play("catch")
+		elif is_descending and not has_resolved_landing:
+			if payload_sprite.sprite_frames.has_animation("catch_loop"):
+				payload_sprite.play("catch_loop")
+			elif payload_sprite.sprite_frames.has_animation("catch"):
+				payload_sprite.play("catch")
+		elif not is_descending and not is_carrying_cargo:
+			if payload_sprite.sprite_frames.has_animation("default"):
+				payload_sprite.play("default")
 	elif current_anim == &"better_catch":
-		if is_event_boost_active:
+		if is_descending and not has_resolved_landing:
 			payload_sprite.play("better_catch")
-		elif payload_sprite.sprite_frames.has_animation("catch"):
-			payload_sprite.play("catch")
+		elif not is_descending and not is_carrying_cargo:
+			if payload_sprite.sprite_frames.has_animation("default"):
+				payload_sprite.play("default")
+	elif current_anim == &"catch":
+		if is_descending and not has_resolved_landing:
+			if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
+				payload_sprite.play("better_catch")
+			else:
+				payload_sprite.play("catch")
+		elif not is_descending and not is_carrying_cargo:
+			if payload_sprite.sprite_frames.has_animation("default"):
+				payload_sprite.play("default")
 	elif current_anim == &"hold":
 		is_descending = false
-		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
-			payload_sprite.play("better_catch")
-		elif payload_sprite.sprite_frames.has_animation("catch"):
-			payload_sprite.play("catch")
-		elif payload_sprite.sprite_frames.has_animation("default"):
+		if not is_carrying_cargo and payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 		if auto_retract_after_landing and not is_at_top:
 			target_rope_length = min_rope_length
-	elif current_anim == &"catch":
-		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
-			payload_sprite.play("better_catch")
 
 
 # ==============================================================================
@@ -2268,17 +2244,18 @@ func _end_event_boost() -> void:
 	if payload_sprite and payload_sprite.sprite_frames:
 		if is_carrying_cargo and payload_sprite.sprite_frames.has_animation("hold"):
 			payload_sprite.play("hold")
-		elif payload_sprite.sprite_frames.has_animation("catch"):
+		elif is_descending and payload_sprite.sprite_frames.has_animation("catch"):
 			payload_sprite.play("catch")
 		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 
-	print("[Crane] Upgrade Rock boost süresi tamamlandı. 'catch' animasyonuna dönüldü.")
+	print("[Crane] Event Rock boost süresi tamamlandı. Standart 'default' animasyonuna dönüldü.")
 
 
 func _play_event_boost_pickup_effect() -> void:
 	_play_payload_catch_sound()
 	_trigger_pickup_screen_shake()
+	_trigger_hit_stop(hit_stop_duration * 1.25)
 
 	if payload_sprite:
 		var pop := create_tween()
@@ -2493,48 +2470,57 @@ func _update_factory_pointer() -> void:
 			factory.hide_pointer_temporarily()
 
 
+var _camera_shake_tween: Tween = null
+var _claw_squash_tween: Tween = null
+
+
 func _trigger_pickup_screen_shake() -> void:
 	if not enable_pickup_shake:
 		return
 
 	var cam: Camera2D = get_viewport().get_camera_2d()
 	if cam and is_instance_valid(cam):
-		var orig_offset: Vector2 = cam.offset
-		var tween := create_tween()
-		var steps: int = 5
+		if _camera_shake_tween and _camera_shake_tween.is_valid():
+			_camera_shake_tween.kill()
+		cam.offset = Vector2.ZERO
+		_camera_shake_tween = create_tween()
+		var steps: int = 7
 		var step_dur: float = pickup_shake_duration / float(steps)
 		for i in range(steps):
-			var damp: float = 1.0 - (float(i) / float(steps))
+			var damp: float = pow(1.0 - (float(i) / float(steps)), 1.4)
 			var shake_vec := Vector2(
 				randf_range(-pickup_shake_intensity, pickup_shake_intensity) * damp,
-				randf_range(-pickup_shake_intensity * 0.7, pickup_shake_intensity * 0.7) * damp
+				randf_range(-pickup_shake_intensity * 0.8, pickup_shake_intensity * 0.8) * damp
 			)
-			tween.tween_property(cam, "offset", orig_offset + shake_vec, step_dur).set_trans(Tween.TRANS_SINE)
-		tween.tween_property(cam, "offset", orig_offset, step_dur * 0.5)
+			_camera_shake_tween.tween_property(cam, "offset", shake_vec, step_dur).set_trans(Tween.TRANS_SINE)
+		_camera_shake_tween.tween_property(cam, "offset", Vector2.ZERO, step_dur * 0.5)
 	else:
 		# Fallback if camera is not active: shake the scene root
 		var root_node := get_tree().current_scene
 		if root_node and is_instance_valid(root_node):
 			var orig_pos: Vector2 = root_node.position
 			var tween := create_tween()
-			var steps: int = 5
+			var steps: int = 7
 			var step_dur: float = pickup_shake_duration / float(steps)
 			for i in range(steps):
-				var damp: float = 1.0 - (float(i) / float(steps))
+				var damp: float = pow(1.0 - (float(i) / float(steps)), 1.4)
 				var shake_vec := Vector2(
 					randf_range(-pickup_shake_intensity, pickup_shake_intensity) * damp,
-					randf_range(-pickup_shake_intensity * 0.7, pickup_shake_intensity * 0.7) * damp
+					randf_range(-pickup_shake_intensity * 0.8, pickup_shake_intensity * 0.8) * damp
 				)
 				tween.tween_property(root_node, "position", orig_pos + shake_vec, step_dur).set_trans(Tween.TRANS_SINE)
 			tween.tween_property(root_node, "position", orig_pos, step_dur * 0.5)
 
 	# Tactile squash-and-stretch on the hook claw itself for extra impact feel
 	if payload_sprite:
-		var grab_tween := create_tween()
-		grab_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		var base_s: Vector2 = payload_sprite.scale
-		grab_tween.tween_property(payload_sprite, "scale", base_s * Vector2(1.15, 0.88), 0.08)
-		grab_tween.tween_property(payload_sprite, "scale", base_s, 0.12)
+		if _claw_squash_tween and _claw_squash_tween.is_valid():
+			_claw_squash_tween.kill()
+		_claw_squash_tween = create_tween()
+		_claw_squash_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		var base_s: Vector2 = Vector2(2.6953125, 2.6953125) if payload_sprite.scale.x > 2.0 else Vector2.ONE
+		_claw_squash_tween.tween_property(payload_sprite, "scale", base_s * Vector2(1.25, 0.78), 0.08)
+		_claw_squash_tween.tween_property(payload_sprite, "scale", base_s * Vector2(0.92, 1.08), 0.10)
+		_claw_squash_tween.tween_property(payload_sprite, "scale", base_s, 0.14)
 
 
 func _trigger_hit_stop(duration_sec: float = -1.0) -> void:
@@ -2549,6 +2535,10 @@ func _trigger_hit_stop(duration_sec: float = -1.0) -> void:
 		tree.create_timer(dur, true, false, true).timeout.connect(func():
 			Engine.time_scale = 1.0
 		)
+
+
+func _exit_tree() -> void:
+	Engine.time_scale = 1.0
 
 
 ## Toggles the aim cursor visibility on/off

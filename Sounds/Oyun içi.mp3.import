@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bqcvv1hyujmew"
+path="res://.godot/imported/Oyun içi.mp3-0267e65d1e5b03dddbac26faaefb40ad.mp3str"
+
+[deps]
+
+source_file="res://Sounds/Oyun içi.mp3"
+dest_files=["res://.godot/imported/Oyun içi.mp3-0267e65d1e5b03dddbac26faaefb40ad.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
