@@ -14,11 +14,11 @@ var objects: Array[Array] = []
 @export var particle_friction: float = 0.05
 @export var particle_linear_damp: float = 0.3
 @export var kill_y: float = 3000.0
-@export var max_particles: int = 600
+@export var max_particles: int = 6000
 
 @export_group("Spawning")
 ## Number of drops to spawn at start from this generator's position
-@export var initial_drops: int = 100
+@export var initial_drops: int = 1000
 ## 0: POINT (pour from marker), 1: AREA (fill an area around marker)
 @export_enum("POINT:0", "AREA:1") var spawn_mode: int = 0
 ## Area size if spawn_mode is AREA
@@ -182,9 +182,11 @@ func _process(_delta: float) -> void:
 		pointer = parent.pointer
 
 	var should_spawn: bool = false
+	var gm = get_node_or_null("/root/GameManager")
+	var is_debug: bool = gm and gm.debug_mode
 	if continuous_stream:
 		should_spawn = true
-	elif Input.is_key_pressed(spawn_key) or Input.is_action_pressed("ui_accept"):
+	elif is_debug and Input.is_key_pressed(spawn_key):
 		should_spawn = true
 
 	if should_spawn:

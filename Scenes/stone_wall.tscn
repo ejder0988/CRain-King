@@ -1,7 +1,12 @@
 [gd_scene format=3 uid="uid://dvscq4k304yke"]
 
-[ext_resource type="Script" path="res://Scripts/stone_wall.gd" id="1_wall"]
-[ext_resource type="Texture2D" uid="uid://wallbuildtex01" path="res://Sprites/Crane/wallbuild.png" id="2_walltex"]
+[ext_resource type="Script" uid="uid://c0rji65t32q43" path="res://Scripts/stone_wall.gd" id="1_wall"]
+[ext_resource type="Texture2D" uid="uid://s0v5o0enpudk" path="res://Sprites/Crane/wallbuild.png" id="2_walltex"]
+[ext_resource type="Texture2D" uid="uid://drv8ccy3bxf7f" path="res://Sprites/pointer.png" id="3_ppgof"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xe308"]
+atlas = ExtResource("2_walltex")
+region = Rect2(1118, 14, 28, 115)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_solid"]
 size = Vector2(40, 20)
@@ -9,32 +14,28 @@ size = Vector2(40, 20)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_drop"]
 size = Vector2(44, 20)
 
-[node name="StoneWall" type="StaticBody2D" groups=["stone_wall"]]
-collision_layer = 1
-collision_mask = 1
+[node name="StoneWall" type="StaticBody2D" unique_id=1927535789 groups=["stone_wall"]]
 script = ExtResource("1_wall")
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
+[node name="PointerSprite2D" type="Sprite2D" parent="." unique_id=2104256289]
+visible = false
+position = Vector2(-1.4893618, 42.139538)
+scale = Vector2(2.5611703, 1.8662789)
+texture = ExtResource("3_ppgof")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=2130178708]
+position = Vector2(0, -44)
+scale = Vector2(2, 2)
+texture = SubResource("AtlasTexture_xe308")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1315145518]
 position = Vector2(0, 62)
 shape = SubResource("RectangleShape2D_solid")
 
-[node name="DropZone" type="Area2D" parent="."]
+[node name="DropZone" type="Area2D" parent="." unique_id=67773585]
 position = Vector2(0, 60)
 collision_layer = 3
 collision_mask = 3
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="DropZone"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DropZone" unique_id=1738579661]
 shape = SubResource("RectangleShape2D_drop")
-
-[node name="Label" type="Label" parent="."]
-offset_left = -60.0
-offset_top = 10.0
-offset_right = 60.0
-offset_bottom = 50.0
-theme_override_font_sizes/font_size = 14
-text = "WALL
-[0/24]"
-horizontal_alignment = 1
-vertical_alignment = 1

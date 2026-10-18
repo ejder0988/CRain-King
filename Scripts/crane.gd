@@ -116,6 +116,12 @@ class_name CraneController
 @export var pickup_shake_intensity: float = 4.0
 ## Duration of the shake in seconds
 @export var pickup_shake_duration: float = 0.22
+## Enable hit stop micro-pause when grabbing cargo or water
+@export var enable_hit_stop: bool = true
+## Duration of hit stop in seconds
+@export var hit_stop_duration: float = 0.075
+## Engine time scale during hit stop
+@export var hit_stop_time_scale: float = 0.05
 
 @export_group("Visual Rendering")
 @export var rope_segments: int = 12 ## Curve resolution segments when cable is slack
@@ -160,7 +166,6 @@ const MIN_PAYLOAD_ROTATION: float = deg_to_rad(-75.0)
 # 3. NODE REFERENCES
 # ==============================================================================
 @onready var visuals: Node2D = get_node_or_null("Visuals")
-@onready var animated_sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
 @onready var trolley_pivot: Marker2D = get_node_or_null("TrolleyPivot")
 @onready var line_2d: Line2D = get_node_or_null("Line2D")
 @onready var payload: RigidBody2D = get_node_or_null("Payload")
@@ -186,6 +191,7 @@ var _shaking_sprites: Array[CanvasItem] = []
 
 var prev_trolley_pos: Vector2 = Vector2.ZERO
 var trolley_velocity: Vector2 = Vector2.ZERO
+var is_trolley_actually_moving: bool = false
 
 var is_at_top: bool = true ## True when hook is at the top swinging
 var swing_timer: float = 0.0 ## Oscillator time tracker
@@ -202,6 +208,7 @@ var is_carrying_cargo: bool = false ## True when cargo crate is held by payload
 var grabbed_body: RigidBody2D = null ## Currently grabbed cargo body
 var can_release_cargo: bool = false ## True once initial descent down key is released after pickup
 var prev_down_pressed: bool = false ## Tracks down key state for just_pressed detection
+var prev_release_pressed: bool = false ## Dedicated tracking for cargo release trigger
 var just_released_cargo_this_frame: bool = false ## Prevents SPACE from triggering crane flip on release frame
 var waiting_for_down_release: bool = false ## Requires releasing DOWN key after cargo drop before launching next descent
 
@@ -303,8 +310,6 @@ func _ready() -> void:
 		payload_sprite = _find_payload_sprite()
 	if not visuals:
 		visuals = get_node_or_null("Visuals")
-	if not animated_sprite:
-		animated_sprite = get_node_or_null("AnimatedSprite2D")
 	if not trolley_pivot:
 		trolley_pivot = get_node_or_null("TrolleyPivot")
 	if not trolley_pivot:
@@ -343,6 +348,8 @@ func _ready() -> void:
 		payload.linear_damp = 0.0
 		payload.angular_damp = 2.0
 		payload.continuous_cd = RigidBody2D.CCD_MODE_CAST_RAY
+		payload.collision_mask |= 2
+		payload.collision_layer |= 2
 		
 		# Enable collision reporting for object detection
 		payload.contact_monitor = true
@@ -357,13 +364,6 @@ func _ready() -> void:
 				_rocket_visual = PayloadRocketVisual.new()
 				_rocket_visual.name = "RocketVisual"
 				payload.add_child(_rocket_visual)
-
-	# Crane mast beacon AnimatedSprite2D signal connections
-	if animated_sprite:
-		if not animated_sprite.animation_finished.is_connected(_on_animation_finished):
-			animated_sprite.animation_finished.connect(_on_animation_finished)
-		if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation("idle"):
-			animated_sprite.play("idle")
 
 	# Payload hook AnimatedSprite2D signal connections & default animation
 	if payload_sprite:
@@ -401,6 +401,10 @@ func _ready() -> void:
 	# Initialize active tier physics parameters from Inspector settings
 	set_payload_tier(payload_tier)
 
+	_update_house_upgrade_pointers()
+	_update_wall_pointer()
+	_update_factory_pointer()
+
 
 func _process(_delta: float) -> void:
 	_update_rope_visual()
@@ -410,8 +414,10 @@ func _physics_process(delta: float) -> void:
 	# 1. Cable trolley moves back and forth along the boom (carrying cargo anywhere player wants)
 	_handle_trolley_movement(delta)
 
-	# Handle payload tier upgrade input (K key)
-	if Input.is_key_pressed(payload_upgrade_key):
+	# Handle payload tier upgrade input (K key) - Debug only
+	var gm = get_node_or_null("/root/GameManager")
+	var is_debug: bool = gm and gm.debug_mode
+	if is_debug and Input.is_key_pressed(payload_upgrade_key):
 		if not _payload_key_pressed_prev:
 			_payload_key_pressed_prev = true
 			if payload_tier == 1:
@@ -419,7 +425,8 @@ func _physics_process(delta: float) -> void:
 			else:
 				set_payload_tier(1)
 	else:
-		_payload_key_pressed_prev = false
+		if not Input.is_key_pressed(payload_upgrade_key):
+			_payload_key_pressed_prev = false
 
 	# 2. Aim & swing oscillation when at the top, or angled descent trajectory when deployed
 	if is_at_top:
@@ -427,13 +434,13 @@ func _physics_process(delta: float) -> void:
 	else:
 		_update_deployed_trajectory(delta)
 
-	# 3. Cargo release input (Space, E, or dedicated drop action)
+	# 3. Cargo release input (Space, S, or dedicated drop action)
 	_handle_cargo_release_input()
 
-	# 4. Cable up/down input control
+	# 4. Cable up/down input control (Space lowers at top, raises when deployed)
 	_handle_rope_winch_target(delta)
 
-	# 5. Flip direction (Space) - allowed at top
+	# 5. Flip direction (Q for left, E for right) - allowed at top
 	_handle_flip_input()
 
 	# 6. Check cargo contact during descent
@@ -445,24 +452,24 @@ func _physics_process(delta: float) -> void:
 	# 8. Payload rotation limit [-75 deg, +75 deg]
 	_apply_payload_rotation_limit(delta)
 
-	# Enable releasing cargo ONLY after rope has fully reached the top AND user has released the down key
+	# Enable releasing cargo ONLY after rope has fully reached the top AND user has released the down/space key
 	if is_carrying_cargo and not can_release_cargo:
 		if is_at_top:
 			var down_currently_pressed: bool = (
 				(InputMap.has_action("rope_down") and Input.is_action_pressed("rope_down"))
-				or Input.is_key_pressed(KEY_S)
 				or Input.is_key_pressed(KEY_DOWN)
+				or Input.is_key_pressed(KEY_SPACE)
 			)
 			if not down_currently_pressed:
 				can_release_cargo = true
 
-	# Enable releasing water ONLY after rope has fully reached the top AND user has released the down key
+	# Enable releasing water ONLY after rope has fully reached the top AND user has released the down/space key
 	if is_carrying_water and not can_release_water:
 		if is_at_top:
 			var down_currently_pressed: bool = (
 				(InputMap.has_action("rope_down") and Input.is_action_pressed("rope_down"))
-				or Input.is_key_pressed(KEY_S)
 				or Input.is_key_pressed(KEY_DOWN)
+				or Input.is_key_pressed(KEY_SPACE)
 			)
 			if not down_currently_pressed:
 				can_release_water = true
@@ -508,6 +515,8 @@ func _handle_trolley_movement(delta: float) -> void:
 		current_trolley_dist = clampf(current_trolley_dist + move_delta, min_trolley_distance, max_trolley_distance)
 		actually_moved = absf(current_trolley_dist - prev_dist) > 0.001
 
+	is_trolley_actually_moving = actually_moved
+
 	if actually_moved:
 		if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("move"):
 			if trolley_sprite.animation != &"move" or not trolley_sprite.is_playing():
@@ -520,8 +529,14 @@ func _handle_trolley_movement(delta: float) -> void:
 	_update_trolley_position()
 
 	if delta > 0.0 and prev_trolley_pos != Vector2.ZERO:
-		trolley_velocity = (trolley_pivot.global_position - prev_trolley_pos) / delta
+		if actually_moved:
+			trolley_velocity = (trolley_pivot.global_position - prev_trolley_pos) / delta
+		else:
+			trolley_velocity = Vector2.ZERO
+	else:
+		trolley_velocity = Vector2.ZERO
 	prev_trolley_pos = trolley_pivot.global_position
+
 
 
 func _update_trolley_position() -> void:
@@ -564,8 +579,22 @@ func _update_swing_oscillation(delta: float) -> void:
 		# 5. Continuous driving lag: Holding movement keys lags the rope opposite to motion
 		var pump_bonus: float = 0.0
 		var input_axis: float = _get_horizontal_input()
-		if input_axis != 0.0:
+		if input_axis != 0.0 and is_trolley_actually_moving:
 			pump_bonus = input_axis * (drive_lag_tier2 if payload_tier >= 2 else drive_lag_tier1)
+
+		# Sınır kontrolü: Trolley min veya max sınırına dayandığında ip ile bağlantı kesilmeli
+		var is_at_limit: bool = (current_trolley_dist <= min_trolley_distance + 0.5) or (current_trolley_dist >= max_trolley_distance - 0.5)
+		if is_at_limit and not is_trolley_actually_moving:
+			trolley_accel_x = 0.0
+			inertial = 0.0
+			drag = 0.0
+			pump_bonus = 0.0
+			# Limitteyken itme kuvveti kesilir, salınım hızla sönümlenir
+			swing_angular_velocity = lerpf(swing_angular_velocity, 0.0, delta * 6.0)
+		elif not is_trolley_actually_moving:
+			pump_bonus = 0.0
+			inertial = 0.0
+			drag = 0.0
 
 		# 6. Continuous rotational whip torque during mast flip turn (in the turn direction)
 		var turn_whip: float = 0.0
@@ -700,6 +729,13 @@ func _check_target_lockon(aim_dir: Vector2) -> Node2D:
 		return null
 
 	var candidates: Array[Node] = []
+	if not is_carrying_cargo:
+		for p in tree.get_nodes_in_group("rock_pit"):
+			if not candidates.has(p):
+				candidates.append(p)
+	for r in tree.get_nodes_in_group("brick"):
+		if not candidates.has(r):
+			candidates.append(r)
 	for r in tree.get_nodes_in_group("rock"):
 		if not candidates.has(r):
 			candidates.append(r)
@@ -710,18 +746,56 @@ func _check_target_lockon(aim_dir: Vector2) -> Node2D:
 		if not candidates.has(g):
 			candidates.append(g)
 
-	# When carrying a rock, check if aiming directly at the StoneWall
-	if is_carrying_cargo:
-		var wall = tree.get_first_node_in_group("stone_wall")
-		if wall and is_instance_valid(wall) and wall.has_method("get_wall_top_y_local"):
-			if "current_stage" in wall and "max_stages" in wall and wall.current_stage < wall.max_stages:
-				var wall_target_pos := Vector2(wall.global_position.x, wall.global_position.y + wall.get_wall_top_y_local() * wall.scale.y)
-				var to_wall: Vector2 = wall_target_pos - rope_orig
-				var proj: float = to_wall.dot(aim_dir)
+	# When carrying cargo:
+	# If carrying brick -> aim directly at StoneWall
+	# If carrying upgrade rock -> aim directly at nearest upgradeable House
+	# If carrying rock -> aim directly at Factory
+	if is_carrying_cargo and grabbed_body and is_instance_valid(grabbed_body):
+		if grabbed_body.is_in_group("brick"):
+			var wall = tree.get_first_node_in_group("stone_wall")
+			if wall and is_instance_valid(wall) and wall.has_method("get_wall_top_y_local"):
+				if "current_stage" in wall and "max_stages" in wall and wall.current_stage < wall.max_stages:
+					var wall_target_pos := Vector2(wall.global_position.x, wall.global_position.y + wall.get_wall_top_y_local() * wall.scale.y)
+					var to_wall: Vector2 = wall_target_pos - rope_orig
+					var proj: float = to_wall.dot(aim_dir)
+					if proj > 60.0 and proj <= max_reach + 80.0:
+						var perp: float = (to_wall - aim_dir * proj).length()
+						if perp < 85.0 * wall.scale.x:
+							return wall
+		elif grabbed_body.is_in_group("upgrade_rock"):
+			var houses := tree.get_nodes_in_group("house")
+			var best_house = null
+			var best_proj: float = 999999.0
+			for h in houses:
+				if not is_instance_valid(h) or not (h is House):
+					continue
+				var house := h as House
+				if house.is_destroyed or house.current_level >= house.max_level:
+					continue
+				var bounds: Dictionary = house.get_bounds()
+				var h_target := Vector2((bounds.left + bounds.right) * 0.5, bounds.top)
+				var to_h: Vector2 = h_target - rope_orig
+				var proj: float = to_h.dot(aim_dir)
+				if proj > 60.0 and proj <= max_reach + 100.0:
+					var perp: float = (to_h - aim_dir * proj).length()
+					if perp < 75.0:
+						if proj < best_proj:
+							best_proj = proj
+							best_house = house
+			if best_house:
+				return best_house
+		elif grabbed_body.is_in_group("rock"):
+			var factory = tree.get_first_node_in_group("factory")
+			if not factory and tree.current_scene:
+				factory = tree.current_scene.find_child("factory", true, false)
+			if factory and is_instance_valid(factory):
+				var factory_target_pos: Vector2 = factory.global_position
+				var to_factory: Vector2 = factory_target_pos - rope_orig
+				var proj: float = to_factory.dot(aim_dir)
 				if proj > 60.0 and proj <= max_reach + 80.0:
-					var perp: float = (to_wall - aim_dir * proj).length()
-					if perp < 85.0 * wall.scale.x:
-						return wall
+					var perp: float = (to_factory - aim_dir * proj).length()
+					if perp < 110.0:
+						return factory
 
 	# Proximity check along aim ray
 	for node in candidates:
@@ -781,6 +855,10 @@ func _update_deployed_trajectory(delta: float) -> void:
 		arrow.visible = false
 	if _aim_trajectory and _aim_trajectory.is_active:
 		_aim_trajectory.is_active = false
+
+	# If carrying cargo or water, never allow the rope to continue extending downwards
+	if (is_carrying_cargo or is_carrying_water) and target_rope_length > current_rope_length:
+		target_rope_length = current_rope_length
 
 	# Winch extension/retraction calculation
 	var prev_len: float = current_rope_length
@@ -902,54 +980,79 @@ func _handle_rope_winch_target(_delta: float) -> void:
 	if is_turning:
 		return
 
-	# UP input: winch back up to the top
-	var pressed_up: bool = Input.is_action_just_pressed("rope_up") or Input.is_action_pressed("rope_up") \
-		or Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)
-	if pressed_up:
-		target_rope_length = min_rope_length
-		if is_descending:
-			is_descending = false
-			has_resolved_landing = false
-			if not is_carrying_cargo and not is_carrying_water and payload_sprite:
-				var anim: StringName = payload_sprite.animation
-				if anim == &"catch_start" or anim == &"catch_loop":
-					if payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
-						payload_sprite.play("default")
-
-	# DOWN input: release held cargo/water if carrying, otherwise launch aimed descent
-	var is_down_pressed: bool = Input.is_action_pressed("rope_down") \
-		or Input.is_key_pressed(KEY_S) \
+	var is_space_pressed: bool = (
+		Input.is_key_pressed(KEY_SPACE)
+		or (InputMap.has_action("rope_down") and Input.is_action_pressed("rope_down"))
+		or (InputMap.has_action("rope_up") and Input.is_action_pressed("rope_up"))
 		or Input.is_key_pressed(KEY_DOWN)
+		or Input.is_key_pressed(KEY_UP)
+	)
 
-	if not is_down_pressed:
+	if not is_space_pressed:
 		waiting_for_down_release = false
 
 	if waiting_for_down_release or just_released_cargo_this_frame:
-		prev_down_pressed = is_down_pressed
+		prev_down_pressed = is_space_pressed
 		return
 
-	var is_down_just_pressed: bool = Input.is_action_just_pressed("rope_down") \
-		or (is_down_pressed and not prev_down_pressed)
+	var is_space_just_pressed: bool = (
+		(is_space_pressed and not prev_down_pressed)
+		or (InputMap.has_action("rope_down") and Input.is_action_just_pressed("rope_down"))
+		or (InputMap.has_action("rope_up") and Input.is_action_just_pressed("rope_up"))
+		or (InputMap.has_action("ui_accept") and Input.is_action_just_pressed("ui_accept"))
+	)
 
-	if is_down_just_pressed:
-		if is_carrying_cargo:
-			# Payload bir obje tutmusken ip en yukari (top) noktaya ulasmadan birakamaz
-			if is_at_top and can_release_cargo:
-				just_released_cargo_this_frame = true
-				waiting_for_down_release = true
-				_release_cargo()
-		elif is_carrying_water:
-			# Water cannot be released until reaching top!
-			if is_at_top and can_release_water:
-				just_released_cargo_this_frame = true
-				waiting_for_down_release = true
-				_release_water()
-		elif is_at_top:
-			_launch_aimed_descent()
+	prev_down_pressed = is_space_pressed
+
+	if not is_space_just_pressed:
+		return
+
+	# If carrying cargo or water:
+	if is_carrying_cargo:
+		if is_at_top and can_release_cargo:
+			just_released_cargo_this_frame = true
+			waiting_for_down_release = true
+			_release_cargo()
+		elif not is_at_top:
+			# If lowered with cargo, winch back up
+			target_rope_length = min_rope_length
+			is_descending = false
+			has_resolved_landing = false
+		return
+	elif is_carrying_water:
+		if is_at_top and can_release_water:
+			just_released_cargo_this_frame = true
+			waiting_for_down_release = true
+			_release_water()
+		elif not is_at_top:
+			# If lowered with water, winch back up
+			target_rope_length = min_rope_length
+			is_descending = false
+			has_resolved_landing = false
+		return
+
+	# Empty hook: SPACE controls both down and up
+	if is_at_top:
+		# At top -> launch aimed descent downwards!
+		_launch_aimed_descent()
+	else:
+		# Hook is deployed below top -> toggle descent vs ascent
+		if is_descending or target_rope_length > current_rope_length:
+			# Going down -> pull back UP!
+			target_rope_length = min_rope_length
+			is_descending = false
+			has_resolved_landing = false
+			if payload_sprite and payload_sprite.sprite_frames:
+				if payload_sprite.sprite_frames.has_animation("default"):
+					payload_sprite.play("default")
+			print("[Crane] Space: İniş durduruldu, kanca yukarı çekiliyor.")
 		else:
+			# Going up -> reverse and go back DOWN!
 			target_rope_length = max_rope_length
-
-	prev_down_pressed = is_down_pressed
+			is_descending = true
+			has_resolved_landing = false
+			_start_payload_descent()
+			print("[Crane] Space: Çıkış durduruldu, kanca tekrar aşağı iniyor.")
 
 
 func _start_payload_descent() -> void:
@@ -1016,7 +1119,7 @@ func _resolve_landing() -> void:
 
 	# CASE A: Currently carrying cargo and lowered onto surface -> Release/Deposit cargo
 	if is_carrying_cargo:
-		if _check_and_deposit_to_stone_wall():
+		if _check_and_deposit_to_factory() or _check_and_deposit_to_stone_wall() or _check_and_deposit_to_house():
 			if auto_retract_after_landing and is_inside_tree():
 				var tree := get_tree()
 				if tree:
@@ -1062,6 +1165,15 @@ func _resolve_landing() -> void:
 				payload.add_collision_exception_with(grabbed_body)
 			cargo_picked_up.emit(grabbed_body)
 			_trigger_pickup_screen_shake()
+			_trigger_hit_stop()
+			_update_house_upgrade_pointers()
+			_update_wall_pointer()
+			_update_factory_pointer()
+
+		# IMMEDIATELY halt descent: rope stops descending when cargo is grasped!
+		is_descending = false
+		has_resolved_landing = true
+		target_rope_length = current_rope_length
 
 		if payload_sprite.sprite_frames.has_animation("hold"):
 			payload_sprite.play("hold")
@@ -1072,7 +1184,7 @@ func _resolve_landing() -> void:
 		if auto_retract_after_landing and is_inside_tree():
 			var tree := get_tree()
 			if tree:
-				tree.create_timer(0.3).timeout.connect(func():
+				tree.create_timer(0.12).timeout.connect(func():
 					if not is_at_top:
 						target_rope_length = min_rope_length
 				)
@@ -1088,24 +1200,75 @@ func _resolve_landing() -> void:
 				)
 
 
+## Directly gives and locks a cargo item onto the crane hook (e.g. from rock pit)
+func pickup_cargo_direct(cargo: RigidBody2D) -> bool:
+	if not cargo or not is_instance_valid(cargo):
+		return false
+	if is_carrying_cargo or is_carrying_water:
+		return false
+
+	grabbed_body = cargo
+	is_carrying_cargo = true
+	can_release_cargo = false
+	is_descending = false
+	has_resolved_landing = true
+	target_rope_length = current_rope_length
+	cargo.set_deferred("freeze", true)
+	if payload:
+		payload.add_collision_exception_with(cargo)
+	cargo_picked_up.emit(cargo)
+	_trigger_pickup_screen_shake()
+	_trigger_hit_stop()
+	_update_house_upgrade_pointers()
+	_update_wall_pointer()
+	_update_factory_pointer()
+
+	if payload_sprite and payload_sprite.sprite_frames:
+		if payload_sprite.sprite_frames.has_animation("hold"):
+			payload_sprite.play("hold")
+		elif payload_sprite.sprite_frames.has_animation("default"):
+			payload_sprite.play("default")
+
+	# Auto-retract back to top with the caught cargo
+	if auto_retract_after_landing and is_inside_tree():
+		var tree := get_tree()
+		if tree:
+			tree.create_timer(0.12).timeout.connect(func():
+				if not is_at_top:
+					target_rope_length = min_rope_length
+			)
+	return true
+
+
+
 # ==============================================================================
 # 8. CARGO RELEASE MECHANISM (DOWN KEY ONLY)
 # ==============================================================================
 func _handle_cargo_release_input() -> void:
 	if not is_carrying_cargo and not is_carrying_water:
+		prev_release_pressed = false
 		return
 	if is_turning:
+		prev_release_pressed = false
 		return
 	# Payload bir obje tutmussa ip en yukari (top) kisma cikmadan kesinlikle birakamaz!
 	if not is_at_top:
+		prev_release_pressed = false
 		return
 
-	# Cargo/water release is triggered ONLY by the DOWN key (S / Down Arrow / rope_down)
-	var is_down_just_pressed: bool = (
-		(InputMap.has_action("rope_down") and Input.is_action_just_pressed("rope_down"))
-		or Input.is_key_pressed(KEY_S)
+	var is_space_pressed_release: bool = (
+		Input.is_key_pressed(KEY_SPACE)
+		or (InputMap.has_action("rope_down") and Input.is_action_pressed("rope_down"))
+		or (InputMap.has_action("ui_accept") and Input.is_action_pressed("ui_accept"))
 		or Input.is_key_pressed(KEY_DOWN)
 	)
+	var is_down_just_pressed: bool = (
+		(is_space_pressed_release and not prev_release_pressed)
+		or (InputMap.has_action("rope_down") and Input.is_action_just_pressed("rope_down"))
+		or (InputMap.has_action("ui_accept") and Input.is_action_just_pressed("ui_accept"))
+	)
+
+	prev_release_pressed = is_space_pressed_release
 
 	if is_down_just_pressed and not waiting_for_down_release:
 		if is_carrying_cargo and can_release_cargo:
@@ -1169,12 +1332,19 @@ func _release_cargo() -> void:
 		payload.remove_collision_exception_with(released_ref)
 
 	# 3. Clear grabbed reference and carrying state
+	var was_upgrade_rock: bool = released_ref.is_in_group("upgrade_rock")
 	grabbed_body = null
 	is_carrying_cargo = false
 	has_caught_object = false
 	can_release_cargo = false
 	waiting_for_down_release = true
 	cargo_released.emit(released_ref)
+	_update_house_upgrade_pointers()
+	_update_wall_pointer()
+	_update_factory_pointer()
+
+	if was_upgrade_rock:
+		_monitor_free_upgrade_rock(released_ref)
 
 	# Open hook back to default animation
 	if payload_sprite and payload_sprite.sprite_frames:
@@ -1301,8 +1471,8 @@ func _check_water_interaction(delta: float) -> void:
 		if is_at_top and not can_release_water:
 			var down_currently_pressed: bool = (
 				(InputMap.has_action("rope_down") and Input.is_action_pressed("rope_down"))
-				or Input.is_key_pressed(KEY_S)
 				or Input.is_key_pressed(KEY_DOWN)
+				or Input.is_key_pressed(KEY_SPACE)
 			)
 			if not down_currently_pressed:
 				can_release_water = true
@@ -1330,6 +1500,8 @@ func _check_water_interaction(delta: float) -> void:
 				# Water dip ripple juice & gentle screen shake
 				if enable_pickup_shake:
 					_trigger_pickup_screen_shake()
+				_trigger_hit_stop()
+
 
 				# Auto-retract back to top with the caught water
 				if auto_retract_after_landing and is_inside_tree():
@@ -1438,6 +1610,16 @@ func _is_touching_grabbable_object() -> bool:
 	if is_inside_tree():
 		var tree := get_tree()
 		if tree:
+			var pit = tree.get_first_node_in_group("rock_pit")
+			if pit and is_instance_valid(pit):
+				var diff: Vector2 = pit.global_position - payload.global_position
+				if absf(diff.x) <= 80.0 and diff.y >= -50.0 and diff.y <= 65.0:
+					return true
+			for node in tree.get_nodes_in_group("upgrade_rock"):
+				if node is Node2D and node != payload and node != grabbed_body:
+					var diff: Vector2 = node.global_position - payload.global_position
+					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+						return true
 			for node in tree.get_nodes_in_group("cargo"):
 				if node is Node2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
@@ -1464,6 +1646,23 @@ func _find_touching_grabbable_body() -> RigidBody2D:
 	if is_inside_tree():
 		var tree := get_tree()
 		if tree:
+			var pit = tree.get_first_node_in_group("rock_pit")
+			if pit and is_instance_valid(pit) and pit.has_method("dispense_rock_to_crane"):
+				var diff: Vector2 = pit.global_position - payload.global_position
+				if absf(diff.x) <= 80.0 and diff.y >= -50.0 and diff.y <= 65.0:
+					var mined_rock: RigidBody2D = pit.dispense_rock_to_crane(self)
+					if mined_rock:
+						return mined_rock
+			for node in tree.get_nodes_in_group("upgrade_rock"):
+				if node is RigidBody2D and node != payload and node != grabbed_body:
+					var diff: Vector2 = node.global_position - payload.global_position
+					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+						return node
+			for node in tree.get_nodes_in_group("brick"):
+				if node is RigidBody2D and node != payload and node != grabbed_body:
+					var diff: Vector2 = node.global_position - payload.global_position
+					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+						return node
 			for node in tree.get_nodes_in_group("rock"):
 				if node is RigidBody2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
@@ -1523,15 +1722,29 @@ func _on_payload_animation_finished() -> void:
 
 
 # ==============================================================================
-# 9. DIRECTION FLIP (SPACE)
+# 9. DIRECTION TURN (Q: LEFT, E: RIGHT)
 # ==============================================================================
 func _handle_flip_input() -> void:
 	if not is_at_top:
 		return
 	if just_released_cargo_this_frame:
 		return
-	var pressed_flip: bool = Input.is_action_just_pressed("crane_flip") or Input.is_key_pressed(KEY_SPACE)
-	if pressed_flip and not is_turning:
+	if is_turning:
+		return
+
+	# Q: Turn Left (face left: -1), E: Turn Right (face right: 1)
+	var want_turn_left: bool = (
+		Input.is_key_pressed(KEY_Q)
+		or (InputMap.has_action("crane_turn_left") and Input.is_action_just_pressed("crane_turn_left"))
+	)
+	var want_turn_right: bool = (
+		Input.is_key_pressed(KEY_E)
+		or (InputMap.has_action("crane_turn_right") and Input.is_action_just_pressed("crane_turn_right"))
+	)
+
+	if want_turn_left and facing_direction != -1:
+		_start_turn()
+	elif want_turn_right and facing_direction != 1:
 		_start_turn()
 
 
@@ -1565,10 +1778,6 @@ func _start_turn() -> void:
 	# 1. Play crane body turn animation forward
 	if crane_body_sprite and crane_body_sprite.sprite_frames and crane_body_sprite.sprite_frames.has_animation("turn"):
 		crane_body_sprite.play("turn")
-		if animated_sprite and animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation("turn"):
-			animated_sprite.play("turn")
-	elif animated_sprite and animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation("turn"):
-		animated_sprite.play("turn")
 	else:
 		_run_procedural_turn()
 
@@ -1592,11 +1801,6 @@ func _on_crane_body_animation_finished() -> void:
 			crane_body_sprite.play_backwards("turn")
 		else:
 			_complete_turn()
-
-		if animated_sprite and animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation("turn"):
-			var beacon_last: int = animated_sprite.sprite_frames.get_frame_count("turn") - 1
-			animated_sprite.frame = beacon_last
-			animated_sprite.play_backwards("turn")
 	else:
 		# --- Phase 2 complete: Reverse turn reached start, switch to default ---
 		_complete_turn()
@@ -1619,12 +1823,6 @@ func _run_procedural_turn() -> void:
 		_complete_turn()
 
 
-func _on_animation_finished() -> void:
-	# Fallback if crane_body_sprite is not present
-	if not crane_body_sprite and is_turning and animated_sprite and animated_sprite.animation == "turn":
-		_complete_turn()
-
-
 func _complete_turn() -> void:
 	is_turning = false
 	_is_turn_reversing = false
@@ -1637,9 +1835,6 @@ func _complete_turn() -> void:
 	if crane_body_sprite and crane_body_sprite.sprite_frames and crane_body_sprite.sprite_frames.has_animation("default"):
 		crane_body_sprite.play("default")
 
-	if animated_sprite and animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation("idle"):
-		animated_sprite.play("idle")
-
 	if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
 		trolley_sprite.play("default")
 
@@ -1647,8 +1842,6 @@ func _complete_turn() -> void:
 func _apply_flip_state(dir_x: float) -> void:
 	if visuals:
 		visuals.scale.x = dir_x
-	if animated_sprite and not visuals:
-		animated_sprite.scale.x = dir_x
 
 	_update_trolley_position()
 
@@ -1799,11 +1992,13 @@ func upgrade_payload() -> bool:
 func _check_and_deposit_to_stone_wall() -> bool:
 	if not grabbed_body or not is_instance_valid(grabbed_body):
 		return false
+	if not grabbed_body.is_in_group("brick"):
+		return false # Only bricks upgrade the wall
 	var tree := get_tree()
 	if not tree:
 		return false
 	var wall = tree.get_first_node_in_group("stone_wall")
-	if not wall or not is_instance_valid(wall) or not wall.has_method("place_rock"):
+	if not wall or not is_instance_valid(wall) or (not wall.has_method("place_brick") and not wall.has_method("place_rock")):
 		return false
 
 	var wall_top_y_world: float = wall.global_position.y
@@ -1813,11 +2008,171 @@ func _check_and_deposit_to_stone_wall() -> bool:
 	var diff: Vector2 = grabbed_body.global_position - Vector2(wall.global_position.x, wall_top_y_world)
 	# Check horizontal alignment within wall width and near or slightly above the rising top surface
 	if absf(diff.x) <= 75.0 * wall.scale.x and diff.y >= -50.0 and diff.y <= 100.0:
-		var rock_to_place: RigidBody2D = grabbed_body
+		var brick_to_place: RigidBody2D = grabbed_body
 		_release_cargo()
-		wall.place_rock(rock_to_place)
+		if wall.has_method("place_brick"):
+			wall.place_brick(brick_to_place)
+		else:
+			wall.place_rock(brick_to_place)
 		return true
 	return false
+
+
+func _check_and_deposit_to_factory() -> bool:
+	if not grabbed_body or not is_instance_valid(grabbed_body):
+		return false
+	if not grabbed_body.is_in_group("rock") or grabbed_body.is_in_group("brick") or grabbed_body.is_in_group("upgrade_rock"):
+		return false
+	var tree := get_tree()
+	if not tree:
+		return false
+	var factory = tree.get_first_node_in_group("factory")
+	if not factory and tree.current_scene:
+		factory = tree.current_scene.find_child("factory", true, false)
+	if not factory or not is_instance_valid(factory) or not factory.has_method("accept_rock"):
+		return false
+	if "is_producing" in factory and factory.is_producing:
+		return false
+
+	var diff: Vector2 = grabbed_body.global_position - factory.global_position
+	if absf(diff.x) <= 90.0 and diff.y >= -80.0 and diff.y <= 90.0:
+		var rock_to_feed: RigidBody2D = grabbed_body
+		_release_cargo()
+		factory.accept_rock(rock_to_feed)
+		return true
+	return false
+
+
+func _check_and_deposit_to_house() -> bool:
+	if not grabbed_body or not is_instance_valid(grabbed_body):
+		return false
+	if not grabbed_body.is_in_group("upgrade_rock"):
+		return false
+	var tree := get_tree()
+	if not tree:
+		return false
+
+	var houses := tree.get_nodes_in_group("house")
+	for h in houses:
+		if not is_instance_valid(h) or not (h is House):
+			continue
+		var house := h as House
+		if house.is_destroyed or house.current_level >= house.max_level:
+			continue
+
+		var bounds: Dictionary = house.get_bounds()
+		var rock_pos := grabbed_body.global_position
+		# Check if rock is within horizontal bounds of the house and near/above roof
+		var within_x: bool = rock_pos.x >= bounds.left - 30.0 and rock_pos.x <= bounds.right + 30.0
+		var within_y: bool = rock_pos.y >= bounds.top - 80.0 and rock_pos.y <= bounds.bottom + 30.0
+
+		if within_x and within_y:
+			var rock_to_consume: RigidBody2D = grabbed_body
+			_release_cargo()
+			_disintegrate_upgrade_rock(rock_to_consume)
+			house.upgrade()
+			_update_house_upgrade_pointers()
+			_update_wall_pointer()
+			_update_factory_pointer()
+			print("[Crane] Upgrade Rock başarıyla ", house.name, " evine verildi! Yeni seviye: Lv.", house.current_level)
+			return true
+	return false
+
+
+func _disintegrate_upgrade_rock(rock_body: RigidBody2D) -> void:
+	if not is_instance_valid(rock_body):
+		return
+	rock_body.set_deferred("freeze", true)
+	rock_body.remove_from_group("rock")
+	rock_body.remove_from_group("upgrade_rock")
+	rock_body.remove_from_group("cargo")
+	rock_body.remove_from_group("grabbable")
+
+	var tw := rock_body.create_tween().set_parallel(true)
+	tw.tween_property(rock_body, "scale", rock_body.scale * 1.4, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(rock_body, "modulate", Color(2.0, 2.0, 1.0, 0.0), 0.25)
+	tw.chain().tween_callback(func():
+		if is_instance_valid(rock_body):
+			rock_body.queue_free()
+	)
+
+
+func _monitor_free_upgrade_rock(rock: RigidBody2D) -> void:
+	if not is_instance_valid(rock):
+		return
+	var tree := get_tree()
+	if not tree:
+		return
+	var tw := rock.create_tween()
+	for i in range(40):
+		tw.tween_interval(0.1)
+		tw.tween_callback(func():
+			if not is_instance_valid(rock) or rock.is_queued_for_deletion():
+				return
+			var houses := tree.get_nodes_in_group("house")
+			for h in houses:
+				if not is_instance_valid(h) or not (h is House):
+					continue
+				var house := h as House
+				if house.is_destroyed or house.current_level >= house.max_level:
+					continue
+				var bounds: Dictionary = house.get_bounds()
+				var pos := rock.global_position
+				if pos.x >= bounds.left - 20.0 and pos.x <= bounds.right + 20.0 and pos.y >= bounds.top - 35.0 and pos.y <= bounds.bottom:
+					house.upgrade()
+					_disintegrate_upgrade_rock(rock)
+					print("[Crane] Düşen Upgrade Rock ", house.name, " evine çarptı ve evi yükseltti!")
+					return
+		)
+
+
+func _update_house_upgrade_pointers() -> void:
+	var holding_upgrade_rock: bool = is_carrying_cargo and grabbed_body != null and is_instance_valid(grabbed_body) and grabbed_body.is_in_group("upgrade_rock")
+	var tree := get_tree()
+	if not tree:
+		return
+	var hm = tree.get_first_node_in_group("houses_manager")
+	if not hm and tree.current_scene:
+		hm = tree.current_scene.find_child("Houses", true, false)
+	if hm and hm.has_method("set_upgrade_pointers_visible"):
+		hm.set_upgrade_pointers_visible(holding_upgrade_rock)
+	else:
+		for h in tree.get_nodes_in_group("house"):
+			if is_instance_valid(h) and h.has_method("set_pointer_visible"):
+				h.set_pointer_visible(holding_upgrade_rock)
+
+
+func _update_wall_pointer() -> void:
+	var holding_brick: bool = is_carrying_cargo and grabbed_body != null and is_instance_valid(grabbed_body) and grabbed_body.is_in_group("brick")
+	var tree := get_tree()
+	if not tree:
+		return
+	var wall = tree.get_first_node_in_group("stone_wall")
+	if not wall and tree.current_scene:
+		wall = tree.current_scene.find_child("StoneWall", true, false)
+	if wall and is_instance_valid(wall) and wall.has_method("set_pointer_visible"):
+		wall.set_pointer_visible(holding_brick)
+
+
+func _update_factory_pointer() -> void:
+	var tree := get_tree()
+	if not tree:
+		return
+	var factory = tree.get_first_node_in_group("factory")
+	if not factory and tree.current_scene:
+		factory = tree.current_scene.find_child("factory", true, false)
+	if not factory or not is_instance_valid(factory):
+		return
+
+	# Only raw rock triggers the factory pointer (not brick, not upgrade rock)
+	var holding_raw_rock: bool = is_carrying_cargo and grabbed_body != null and is_instance_valid(grabbed_body) and grabbed_body.is_in_group("rock") and not grabbed_body.is_in_group("brick") and not grabbed_body.is_in_group("upgrade_rock")
+
+	if holding_raw_rock:
+		if factory.has_method("show_first_rock_pointer"):
+			factory.show_first_rock_pointer()
+	else:
+		if factory.has_method("hide_pointer_temporarily"):
+			factory.hide_pointer_temporarily()
 
 
 func _trigger_pickup_screen_shake() -> void:
@@ -1862,3 +2217,17 @@ func _trigger_pickup_screen_shake() -> void:
 		var base_s: Vector2 = payload_sprite.scale
 		grab_tween.tween_property(payload_sprite, "scale", base_s * Vector2(1.15, 0.88), 0.08)
 		grab_tween.tween_property(payload_sprite, "scale", base_s, 0.12)
+
+
+func _trigger_hit_stop(duration_sec: float = -1.0) -> void:
+	if not enable_hit_stop:
+		return
+	var dur: float = hit_stop_duration if duration_sec < 0.0 else duration_sec
+	if dur <= 0.0:
+		return
+	Engine.time_scale = hit_stop_time_scale
+	var tree := get_tree()
+	if tree:
+		tree.create_timer(dur, true, false, true).timeout.connect(func():
+			Engine.time_scale = 1.0
+		)

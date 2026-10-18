@@ -388,13 +388,13 @@ func _apply_weather_state(type: WeatherType, trans_time: float) -> void:
 			_transition_tint(clear_tint, trans_time)
 
 
-func _transition_rain(preset: ShaderMaterial, trans_time: float, splash_amt: float, splash_y: float) -> void:
+func _transition_rain(preset: ShaderMaterial, trans_time: float, splash_amt: float, target_splash_y: float) -> void:
 	if _rain_transition_tween and _rain_transition_tween.is_valid():
 		_rain_transition_tween.kill()
 
 	if trans_time <= 0.0:
 		rain_layer.preset = preset
-		_configure_rain_material(splash_amt, splash_y)
+		_configure_rain_material(splash_amt, target_splash_y)
 		return
 
 	if preset == null:
@@ -413,23 +413,23 @@ func _transition_rain(preset: ShaderMaterial, trans_time: float, splash_amt: flo
 		else:
 			rain_layer.preset = null
 	else:
-		_morph_rain_parameters(preset, trans_time, splash_amt, splash_y)
+		_morph_rain_parameters(preset, trans_time, splash_amt, target_splash_y)
 
 
-func _morph_rain_parameters(target_preset: ShaderMaterial, trans_time: float, splash_amt: float, splash_y: float) -> void:
+func _morph_rain_parameters(target_preset: ShaderMaterial, trans_time: float, splash_amt: float, target_splash_y: float) -> void:
 	if not rain_layer or not target_preset:
 		return
 
 	# If there's no existing material, apply preset directly
 	if rain_layer.preset == null or rain_layer.material == null:
 		rain_layer.preset = target_preset
-		_configure_rain_material(splash_amt, splash_y)
+		_configure_rain_material(splash_amt, target_splash_y)
 		return
 
 	var mat := rain_layer.material as ShaderMaterial
 	if not mat:
 		rain_layer.preset = target_preset
-		_configure_rain_material(splash_amt, splash_y)
+		_configure_rain_material(splash_amt, target_splash_y)
 		return
 
 	# Smoothly morph all shader parameters without stopping the rain
@@ -460,7 +460,7 @@ func _morph_rain_parameters(target_preset: ShaderMaterial, trans_time: float, sp
 		_rain_transition_tween.tween_property(mat, "shader_parameter/alpha_mult", t_alpha_mult, trans_time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 	_rain_transition_tween.tween_property(mat, "shader_parameter/splash_amount", splash_amt, trans_time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	mat.set_shader_parameter("splash_y", splash_y)
+	mat.set_shader_parameter("splash_y", target_splash_y)
 	mat.set_shader_parameter("splash_depth", splash_depth)
 	mat.set_shader_parameter("right_to_left_progress", 1.0)
 
