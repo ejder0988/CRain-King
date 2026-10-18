@@ -16,6 +16,19 @@ signal wall_completed
 ## Texture sheet containing the 24 progressive wall sprites
 @export var wall_sheet: Texture2D = preload("res://Sprites/Crane/wallbuild.png")
 
+@export_group("Wall Audio Settings")
+## Tuğla koyulduğu zaman garanti çalacak olan duvar örme sesi (Varsayılan: res://Sounds/WallBuild.wav)
+@export var wall_build_sound: AudioStream = null
+## Duvar örme ses seviyesi (dB)
+@export var wall_build_volume_db: float = 0.0
+
+## Tuğla koyulduktan sonra rastgele çalacak gülme sesleri (Gülme1.wav, Gülme2.wav, Gülme3.wav)
+@export var laugh_sounds: Array[AudioStream] = []
+## Gülme sesi seviyesi (dB)
+@export var laugh_volume_db: float = -2.0
+## Tuğla koyulduktan sonra gülme sesinin çalma gecikmesi (saniye, örn: 0.12s)
+@export var laugh_delay: float = 0.12
+
 @export_group("Pointer Settings")
 ## When true, the tutorial pointer bobs up and down; when false, it remains stationary
 @export var enable_pointer_movement: bool = false
@@ -30,6 +43,8 @@ var _atlas_tex: AtlasTexture = null
 var _original_sprite_scale: Vector2 = Vector2.ONE
 var _base_pointer_pos: Vector2 = Vector2(-1.5, 42.0)
 var _base_pointer_scale: Vector2 = Vector2(2.56, 1.87)
+var _build_player: AudioStreamPlayer2D = null
+var _laugh_player: AudioStreamPlayer2D = null
 
 # Frame width in wallbuild.png (1152 / 24 = 48)
 const FRAME_WIDTH: int = 48
@@ -41,6 +56,8 @@ func _ready() -> void:
 	add_to_group("stone_wall")
 	collision_layer = 1
 	collision_mask = 1
+
+	_init_wall_audio()
 
 	if sprite:
 		_original_sprite_scale = sprite.scale
@@ -70,21 +87,29 @@ func _process(_delta: float) -> void:
 
 ## Returns the top Y position of the wall in local coordinates based on stage
 func get_wall_top_y_local() -> float:
-	if current_stage <= 0:
-		return 68.0 # Foundation level (near ground)
-	# Each frame from 1 to 23 adds exactly 5 pixels of height
-	var frame_idx: int = clampi(current_stage - 1, 0, 23)
-	var top_y: float = 124.0 - float(frame_idx) * 5.0
-	# Convert from texture coordinates (0 to 144 with center at 72)
-	return top_y - 72.0
+	var h: float = get_wall_height_local()
+	# Baseline ground level is at local y = 72.0
+	return 72.0 - h
 
 
 ## Returns the current height of the wall in local pixels
+## Stage 0/1 starts at 1-pixel / single-brick row height and scales smoothly to 135px at stage 24
 func get_wall_height_local() -> float:
 	if current_stage <= 0:
-		return 8.0
+		return 2.0  # 1-2 pixel foundation
 	var frame_idx: int = clampi(current_stage - 1, 0, 23)
-	return 20.0 + float(frame_idx) * 5.0
+	# Stage 1 starts at 4.0px (single brick row), rising by ~5.7px per stage to 135.0px at Stage 24
+	return 4.0 + float(frame_idx) * (131.0 / 23.0)
+
+
+## Returns the world top Y position of the wall
+func get_wall_top_y_world() -> float:
+	return to_global(Vector2(0.0, get_wall_top_y_local())).y
+
+
+## Returns the world height of the wall in pixels
+func get_wall_height_world() -> float:
+	return get_wall_height_local() * global_scale.y
 
 
 func _update_wall_state(animated: bool = true) -> void:
@@ -93,12 +118,10 @@ func _update_wall_state(animated: bool = true) -> void:
 		var frame_idx: int = 0
 		if current_stage > 0:
 			frame_idx = clampi(current_stage - 1, 0, 23)
-			sprite.visible = true
 		else:
-			# Stage 0: invisible or very faint ghost outline
 			frame_idx = 0
-			sprite.visible = false
 
+		sprite.visible = true
 		_atlas_tex.region = Rect2(frame_idx * FRAME_WIDTH, 0, FRAME_WIDTH, FRAME_HEIGHT)
 
 	# 2. Elevate the top rock deposit collision and drop zone
@@ -112,11 +135,13 @@ func _update_wall_state(animated: bool = true) -> void:
 		var r_shape := drop_collision.shape as RectangleShape2D
 		r_shape.size = Vector2(44.0, 18.0)
 
-	# 3. Expand main water/solid collision block upward as wall grows
+	# 3. Expand main water/solid collision block upward strictly matching drawn brick height
+	# (Empty/invisible upper space has NO collision, allowing water to wash over if wall is low)
 	if main_collision:
 		var col_shape := main_collision.shape as RectangleShape2D
-		if not col_shape:
+		if not col_shape or not col_shape.resource_local_to_scene:
 			col_shape = RectangleShape2D.new()
+			col_shape.resource_local_to_scene = true
 			main_collision.shape = col_shape
 		col_shape.size = Vector2(40.0, wall_h)
 		main_collision.position = Vector2(0.0, 72.0 - (wall_h * 0.5))
@@ -169,11 +194,10 @@ func place_brick(brick_body: Node2D) -> bool:
 	_update_wall_state(true)
 	stage_changed.emit(current_stage, max_stages)
 
-	var gm = get_node_or_null("/root/GameManager")
-	if gm and gm.has_method("add_money"):
-		gm.add_money(10)
+	_play_wall_build_audio()
+	_play_random_laugh_audio()
 
-	print("[StoneWall] Tuğla duvara yerleştirildi! Duvar seviyesi: ", current_stage, "/", max_stages, " (+10$ Kazanıldı)")
+	print("[StoneWall] Tuğla duvara yerleştirildi! Duvar seviyesi: ", current_stage, "/", max_stages)
 
 	if current_stage >= max_stages:
 		wall_completed.emit()
@@ -225,3 +249,117 @@ func _reject_rock(body: Node2D) -> void:
 		var tw := body.create_tween()
 		tw.tween_property(body, "modulate", Color(1.8, 0.3, 0.3), 0.1)
 		tw.tween_property(body, "modulate", Color(1.0, 1.0, 1.0), 0.25)
+
+
+# ==============================================================================
+# WALL CONSTRUCTION AUDIO SYSTEM
+# ==============================================================================
+func _init_wall_audio() -> void:
+	var sfx_bus: String = "SFX" if AudioServer.get_bus_index("SFX") != -1 else "Master"
+
+	# 1. Garanti çalacak olan Duvar Örme Sesi (WallBuild.wav) Oynatıcısı
+	if not _build_player:
+		_build_player = AudioStreamPlayer2D.new()
+		_build_player.name = "WallBuildAudioPlayer"
+		_build_player.bus = sfx_bus
+		_build_player.volume_db = wall_build_volume_db
+		_build_player.max_distance = 2800.0
+		_build_player.attenuation = 1.0
+		add_child(_build_player)
+
+	# 2. Rastgele çalacak olan Gülme Sesleri (Gülme1.wav, Gülme2.wav, Gülme3.wav) Oynatıcısı
+	if not _laugh_player:
+		_laugh_player = AudioStreamPlayer2D.new()
+		_laugh_player.name = "WallLaughAudioPlayer"
+		_laugh_player.bus = sfx_bus
+		_laugh_player.volume_db = laugh_volume_db
+		_laugh_player.max_distance = 2800.0
+		_laugh_player.attenuation = 1.0
+		add_child(_laugh_player)
+
+	# WallBuild.wav otomatik tespit ve atama
+	if wall_build_sound == null:
+		var build_candidates: Array[String] = [
+			"res://Sounds/WallBuild.wav",
+			"res://Sounds/wallbuild.wav",
+			"res://Sounds/Wallbuild.wav",
+			"res://Sounds/wall_build.wav"
+		]
+		for path in build_candidates:
+			if ResourceLoader.exists(path):
+				wall_build_sound = load(path)
+				break
+
+	if wall_build_sound and _build_player:
+		_build_player.stream = wall_build_sound
+
+	# Gülme sesleri listesi boşsa Sounds klasöründeki Gülme1.wav, Gülme2.wav, Gülme3.wav'ı otomatik ekle
+	if laugh_sounds.is_empty():
+		var laugh_candidates: Array[String] = [
+			"res://Sounds/Gülme1.wav",
+			"res://Sounds/Gülme2.wav",
+			"res://Sounds/Gülme3.wav",
+			"res://Sounds/gülme1.wav",
+			"res://Sounds/gülme2.wav",
+			"res://Sounds/gülme3.wav"
+		]
+		for path in laugh_candidates:
+			if ResourceLoader.exists(path):
+				var stream = load(path)
+				if stream and not laugh_sounds.has(stream):
+					laugh_sounds.append(stream)
+
+
+## Tuğla duvara koyulduğunda kesin olarak WallBuild.wav çalar
+func _play_wall_build_audio() -> void:
+	if not _build_player:
+		_init_wall_audio()
+	if not _build_player:
+		return
+
+	if wall_build_sound and _build_player.stream != wall_build_sound:
+		_build_player.stream = wall_build_sound
+	elif _build_player.stream == null:
+		if ResourceLoader.exists("res://Sounds/WallBuild.wav"):
+			_build_player.stream = load("res://Sounds/WallBuild.wav")
+		elif ResourceLoader.exists("res://Sounds/wallbuild.wav"):
+			_build_player.stream = load("res://Sounds/wallbuild.wav")
+
+	if _build_player.stream:
+		_build_player.volume_db = wall_build_volume_db
+		_build_player.pitch_scale = randf_range(0.97, 1.03)
+		_build_player.play()
+
+
+## Tuğla duvara koyulduktan sonra gülme seslerinden (Gülme1, Gülme2, Gülme3) rastgele birini çalar
+func _play_random_laugh_audio() -> void:
+	if not _laugh_player:
+		_init_wall_audio()
+	if not _laugh_player:
+		return
+
+	if laugh_sounds.is_empty():
+		_init_wall_audio()
+	if laugh_sounds.is_empty():
+		return
+
+	var chosen_laugh: AudioStream = laugh_sounds.pick_random()
+	if not chosen_laugh:
+		return
+
+	if laugh_delay > 0.0 and is_inside_tree():
+		var tree := get_tree()
+		if tree:
+			tree.create_timer(laugh_delay).timeout.connect(func():
+				if is_instance_valid(_laugh_player):
+					_laugh_player.stream = chosen_laugh
+					_laugh_player.volume_db = laugh_volume_db
+					_laugh_player.pitch_scale = randf_range(0.95, 1.05)
+					_laugh_player.play()
+			)
+			return
+
+	_laugh_player.stream = chosen_laugh
+	_laugh_player.volume_db = laugh_volume_db
+	_laugh_player.pitch_scale = randf_range(0.95, 1.05)
+	_laugh_player.play()

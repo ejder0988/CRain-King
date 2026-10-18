@@ -16,33 +16,50 @@ class_name CraneController
 @export var rope_winch_speed: float = 240.0 ## Winch retract/extend speed (px/s)
 @export var rope_offset_y: float = 30.0 ## Vertical offset from TrolleyPivot where the rope hangs down
 @export var rope_stiffness: float = 1.0 ## 1.0 = Inextensible steel wire constraint
+@export var rope_segments: int = 16 ## Physical cable resolution segments for Verlet rope simulation
+@export var rope_damping: float = 0.94 ## Air resistance and internal cable damping for Verlet points
+@export var rope_constraint_iterations: int = 8 ## Solver iterations for realistic steel cable stiffness
 
 @export_group("Aim & Swing Physics")
-## Maximum swing angle in degrees (-55 to +55)
-@export var swing_max_angle_deg: float = 55.0
+## Maximum swing angle in degrees (-52 to +52 standard)
+@export var swing_max_angle_deg: float = 52.0
+## Maximum swing angle when event boost or rocket upgrade is active (-75 to +75 deg)
+@export var event_boost_max_angle_deg: float = 75.0
 ## Restoring gravity force pulling rope back toward vertical
-@export var pendulum_gravity: float = 780.0
+@export var pendulum_gravity: float = 820.0
 ## Smooth damping bringing rope to rest when not pushed (higher = less oscillation)
-@export var pendulum_damping: float = 1.8
+@export var pendulum_damping: float = 1.05
+
+@export_subgroup("Trolley Motor Dynamics (Trolley Motor Fiziği)")
+## Acceleration rate of the trolley along the boom (px/s²)
+@export var trolley_acceleration: float = 1400.0
+## Braking deceleration rate when releasing movement keys (px/s²)
+@export var trolley_deceleration: float = 1800.0
+## Boosted acceleration rate when Event Rock is active (px/s²)
+@export var trolley_accel_boosted: float = 2800.0
+## Boosted braking deceleration rate when Event Rock is active (px/s²)
+@export var trolley_decel_boosted: float = 3400.0
 
 @export_subgroup("Trolley Movement Swing (Trolley Hareket Savrulması)")
-## Continuous trolley movement swing tilt for Tier 1 (düşürdükçe ip daha az sallanır)
-@export var movement_swing_strength_tier1: float = 1.35
-## Continuous trolley movement swing tilt for Tier 2 (düşürdükçe ip daha az sallanır)
-@export var movement_swing_strength_tier2: float = 1.75
-## Acceleration inertia kick when trolley starts/stops (Tier 1)
-@export var swing_inertia_tier1: float = 0.95
-## Acceleration inertia kick when trolley starts/stops (Tier 2)
-@export var swing_inertia_tier2: float = 1.25
-## Direct driving lag when holding A/D movement keys (Tier 1)
-@export var drive_lag_tier1: float = 7.5
-## Direct driving lag when holding A/D movement keys (Tier 2)
-@export var drive_lag_tier2: float = 11.0
+## Acceleration inertia kick multiplier from trolley acceleration
+@export var swing_inertia_tier1: float = 1.0
+## Acceleration inertia kick multiplier for Tier 2 / Boosted
+@export var swing_inertia_tier2: float = 1.35
+## Active rocket thrust torque injected into swing when Event Rock is active
+@export var rocket_swing_thrust: float = 22.0
+## Continuous trolley movement swing tilt for Tier 1 (backward compatibility)
+@export var movement_swing_strength_tier1: float = 1.0
+## Continuous trolley movement swing tilt for Tier 2 (backward compatibility)
+@export var movement_swing_strength_tier2: float = 1.3
+## Direct driving lag when holding A/D movement keys (backward compatibility)
+@export var drive_lag_tier1: float = 0.0
+## Direct driving lag when holding A/D movement keys (backward compatibility)
+@export var drive_lag_tier2: float = 0.0
 
 @export_subgroup("Turn Swing & Whip (Dönüş Savrulması)")
-## Swing impulse applied when crane turns around (Tier 1 - azaltıldı)
+## Swing impulse applied when crane turns around (Tier 1)
 @export var turn_swing_kick_tier1: float = 8.5
-## Swing impulse applied when crane turns around (Tier 2 - azaltıldı)
+## Swing impulse applied when crane turns around (Tier 2)
 @export var turn_swing_kick_tier2: float = 12.0
 ## Continuous rotational whip torque during mast flip turn (Tier 1)
 @export var turn_whip_power_tier1: float = 16.0
@@ -150,7 +167,6 @@ var _event_boost_timer: float = 0.0
 @export var hit_stop_time_scale: float = 0.02
 
 @export_group("Visual Rendering")
-@export var rope_segments: int = 12 ## Curve resolution segments when cable is slack
 @export var mast_local_x: float = -28.0 ## Local X position of the mast center
 @export var boom_local_y: float = -596.0 ## Local Y position of the trolley track along the boom
 
@@ -218,14 +234,17 @@ var _shaking_sprites: Array[CanvasItem] = []
 var prev_trolley_pos: Vector2 = Vector2.ZERO
 var trolley_velocity: Vector2 = Vector2.ZERO
 var is_trolley_actually_moving: bool = false
+var trolley_current_speed: float = 0.0 ## Real-time physical trolley speed along track (px/s)
+var rope_points: Array[Vector2] = [] ## World positions of physical Verlet rope points
+var rope_prev_points: Array[Vector2] = [] ## Previous positions for Verlet velocity integration
 
 var is_at_top: bool = true ## True when hook is at the top swinging
 var swing_timer: float = 0.0 ## Oscillator time tracker
 var current_swing_angle: float = 0.0 ## Current swing angle in radians
 var swing_angular_velocity: float = 0.0 ## Current swing angular velocity in radians/sec
 var prev_trolley_velocity: Vector2 = Vector2.ZERO ## Tracks trolley acceleration for inertial swing
-var movement_swing_strength: float = 1.35 ## Active movement swing multiplier
-var swing_inertia_scale: float = 0.95 ## Active acceleration inertia multiplier
+var movement_swing_strength: float = 1.0 ## Active movement swing multiplier
+var swing_inertia_scale: float = 1.0 ## Active acceleration inertia multiplier
 var turn_swing_kick: float = 8.5 ## Active turn impulse
 var locked_aim_angle: float = 0.0 ## Angle locked when DOWN was pressed
 var locked_aim_dir: Vector2 = Vector2.DOWN ## Direction vector locked when DOWN was pressed
@@ -390,6 +409,10 @@ func _ready() -> void:
 		if not payload.body_entered.is_connected(_on_payload_body_entered):
 			payload.body_entered.connect(_on_payload_body_entered)
 
+		# Initialize Verlet physical cable points and initial render
+		_init_rope_physics()
+		_update_rope_visual()
+
 		# Setup Rocket Thruster visual on payload for Tier 2
 		if not _rocket_visual:
 			_rocket_visual = payload.get_node_or_null("RocketVisual") as PayloadRocketVisual
@@ -488,6 +511,9 @@ func _physics_process(delta: float) -> void:
 	else:
 		_update_deployed_trajectory(delta)
 
+	# 2b. Update Physical Verlet Rope Simulation
+	_update_rope_physics(delta)
+
 	# 3. Cargo release input (Space, S, or dedicated drop action)
 	_handle_cargo_release_input()
 
@@ -548,6 +574,7 @@ func _get_horizontal_input() -> float:
 
 func _handle_trolley_movement(delta: float) -> void:
 	if is_turning:
+		trolley_current_speed = 0.0
 		if delta > 0.0 and prev_trolley_pos != Vector2.ZERO and trolley_pivot:
 			trolley_velocity = (trolley_pivot.global_position - prev_trolley_pos) / delta
 		else:
@@ -557,6 +584,7 @@ func _handle_trolley_movement(delta: float) -> void:
 		_stop_trolley_move_sound()
 		return
 	if not is_at_top and lock_trolley_during_descent:
+		trolley_current_speed = 0.0
 		trolley_velocity = Vector2.ZERO
 		if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
 			if trolley_sprite.animation != &"default":
@@ -565,13 +593,34 @@ func _handle_trolley_movement(delta: float) -> void:
 		return
 
 	var input_x: float = _get_horizontal_input()
-	var actually_moved: bool = false
+	var target_speed: float = input_x * float(facing_direction) * trolley_speed
 
-	if input_x != 0.0:
-		var move_delta: float = input_x * float(facing_direction) * trolley_speed * delta
+	var active_accel: float = trolley_accel_boosted if (is_event_boost_active or payload_tier >= 2) else trolley_acceleration
+	var active_decel: float = trolley_decel_boosted if (is_event_boost_active or payload_tier >= 2) else trolley_deceleration
+
+	if absf(target_speed) > 0.001:
+		# Snappy reversal if driving opposite to current momentum
+		var rate: float = (active_accel + active_decel) if (signf(target_speed) != signf(trolley_current_speed) and absf(trolley_current_speed) > 10.0) else active_accel
+		trolley_current_speed = move_toward(trolley_current_speed, target_speed, rate * delta)
+	else:
+		trolley_current_speed = move_toward(trolley_current_speed, 0.0, active_decel * delta)
+
+	var actually_moved: bool = false
+	if absf(trolley_current_speed) > 0.001:
 		var prev_dist: float = current_trolley_dist
-		current_trolley_dist = clampf(current_trolley_dist + move_delta, min_trolley_distance, max_trolley_distance)
-		actually_moved = absf(current_trolley_dist - prev_dist) > 0.001
+		var next_dist: float = current_trolley_dist + trolley_current_speed * delta
+
+		# Boom mechanical stop limits
+		if next_dist <= min_trolley_distance:
+			current_trolley_dist = min_trolley_distance
+			trolley_current_speed = 0.0 # Hits inner mechanical bumper
+		elif next_dist >= max_trolley_distance:
+			current_trolley_dist = max_trolley_distance
+			trolley_current_speed = 0.0 # Hits outer mechanical bumper
+		else:
+			current_trolley_dist = next_dist
+
+		actually_moved = absf(current_trolley_dist - prev_dist) > 0.0001
 
 	is_trolley_actually_moving = actually_moved
 
@@ -588,14 +637,12 @@ func _handle_trolley_movement(delta: float) -> void:
 
 	_update_trolley_position()
 
-	if delta > 0.0 and prev_trolley_pos != Vector2.ZERO:
-		if actually_moved:
-			trolley_velocity = (trolley_pivot.global_position - prev_trolley_pos) / delta
-		else:
-			trolley_velocity = Vector2.ZERO
+	if delta > 0.0 and prev_trolley_pos != Vector2.ZERO and trolley_pivot:
+		trolley_velocity = (trolley_pivot.global_position - prev_trolley_pos) / delta
 	else:
 		trolley_velocity = Vector2.ZERO
-	prev_trolley_pos = trolley_pivot.global_position
+	if trolley_pivot:
+		prev_trolley_pos = trolley_pivot.global_position
 
 
 
@@ -617,76 +664,73 @@ func _update_trolley_position() -> void:
 # ==============================================================================
 func _update_swing_oscillation(delta: float) -> void:
 	if delta > 0.0:
-		# Effective cable length for pendulum physics
-		var eff_len: float = maxf(current_rope_length, 50.0)
+		var eff_len: float = maxf(current_rope_length, 40.0)
 
-		# Horizontal acceleration of the trolley (inertia pushes the pendulum opposite to motion)
+		# 1. Genuine physical acceleration of the trolley in world coordinates
 		var trolley_accel_x: float = (trolley_velocity.x - prev_trolley_velocity.x) / delta
-		trolley_accel_x = clampf(trolley_accel_x, -5000.0, 5000.0)
+		trolley_accel_x = clampf(trolley_accel_x, -4000.0, 4000.0)
 
-		# 1. Restoring gravity torque (pulls toward center)
+		# 2. Pendulum Restoring Gravity Torque: - (g / L) * sin(theta)
 		var restoring: float = - (pendulum_gravity / eff_len) * sin(current_swing_angle)
 
-		# 2. Damping torque (smoothly settles to rest when idle)
-		var damping: float = - pendulum_damping * swing_angular_velocity
+		# 3. Dynamic Air & Mechanical Pivot Damping
+		# Heavy cargo (stone, brick, water) has higher mass/inertia, swinging longer
+		var mass_damping_factor: float = 1.0
+		if is_carrying_cargo or is_carrying_water:
+			mass_damping_factor = 0.75
+		var active_damping: float = pendulum_damping * mass_damping_factor
+		var damping: float = - active_damping * swing_angular_velocity
 
-		# 3. Inertial push from trolley movement / acceleration (opposite to motion)
-		var inertial: float = (trolley_accel_x / eff_len) * cos(current_swing_angle) * swing_inertia_scale
+		# 4. Genuine Inertial Push from Trolley Acceleration
+		# In Godot 2D coordinates (Y down, clockwise from DOWN is +angle/left):
+		# Accelerating right (trolley_accel_x > 0) creates positive angular acceleration (hook lags left).
+		# Braking while moving right (trolley_accel_x < 0) creates negative angular acceleration (hook flings forward/right).
+		var active_inertia_scale: float = swing_inertia_tier2 if (is_event_boost_active or payload_tier >= 2) else swing_inertia_tier1
+		var inertial: float = (trolley_accel_x / eff_len) * cos(current_swing_angle) * active_inertia_scale
 
-		# 4. Continuous movement lag / drag (rope lags behind opposite to moving trolley)
-		var drag: float = (trolley_velocity.x / eff_len) * movement_swing_strength * cos(current_swing_angle) * swing_inertia_scale
-
-		# 5. Continuous driving lag: Holding movement keys lags the rope opposite to motion
-		var pump_bonus: float = 0.0
-		var input_axis: float = _get_horizontal_input()
-		if input_axis != 0.0 and is_trolley_actually_moving:
-			pump_bonus = input_axis * (drive_lag_tier2 if payload_tier >= 2 else drive_lag_tier1)
-
-		# Sınır kontrolü: Trolley min veya max sınırına dayandığında ip ile bağlantı kesilmeli
-		var is_at_limit: bool = (current_trolley_dist <= min_trolley_distance + 0.5) or (current_trolley_dist >= max_trolley_distance - 0.5)
-		if is_at_limit and not is_trolley_actually_moving:
-			trolley_accel_x = 0.0
-			inertial = 0.0
-			drag = 0.0
-			pump_bonus = 0.0
-			# Limitteyken itme kuvveti kesilir, salınım hızla sönümlenir
-			swing_angular_velocity = lerpf(swing_angular_velocity, 0.0, delta * 6.0)
-		elif not is_trolley_actually_moving:
-			pump_bonus = 0.0
-			inertial = 0.0
-			drag = 0.0
-
-		# 6. Continuous rotational whip torque during mast flip turn (in the turn direction)
+		# 5. Continuous rotational whip torque during mast flip turn
 		var turn_whip: float = 0.0
 		if is_turning:
-			var whip_power: float = turn_whip_power_tier2 if payload_tier >= 2 else turn_whip_power_tier1
+			var whip_power: float = turn_whip_power_tier2 if (is_event_boost_active or payload_tier >= 2) else turn_whip_power_tier1
 			var whip_dir: float = float(facing_direction) if not _is_turn_reversing else -float(facing_direction) * 0.7
 			turn_whip = whip_dir * whip_power
 
-		# 7. Ambient gentle breeze push on the cable in the upper atmosphere
-		var ambient_wind: float = (sin(Time.get_ticks_msec() * 0.0016) * 0.14 + sin(Time.get_ticks_msec() * 0.0031) * 0.05) * swing_inertia_scale
+		# 6. Event Rock / Rocket Thruster Swing Boost ("fiziğe dayalı olsa bile biraz daha güç ve hız katabilmeli")
+		var rocket_swing_torque: float = 0.0
+		if is_event_boost_active or payload_tier >= 2:
+			var input_axis: float = _get_horizontal_input()
+			if input_axis != 0.0:
+				# Rocket thrusters apply active physical drive in the movement direction
+				rocket_swing_torque += input_axis * float(facing_direction) * rocket_swing_thrust
+			if absf(swing_angular_velocity) > 0.05:
+				# Tangential rocket thrust assist adding speed and punch to the swing
+				rocket_swing_torque += sign(swing_angular_velocity) * (rocket_swing_thrust * 0.45)
 
-		var total_angular_accel: float = restoring + damping + inertial + drag + pump_bonus + turn_whip + ambient_wind
+			if _rocket_visual:
+				var speed_flame: float = clampf(absf(swing_angular_velocity) / 4.0, 0.0, 0.6)
+				_rocket_visual.flame_scale = 1.15 + speed_flame
 
-		# Carrying cargo or water adds extra physical mass momentum to the swing
-		if is_carrying_cargo or is_carrying_water:
-			total_angular_accel *= (1.18 if payload_tier >= 2 else 1.10)
+		# 7. Ambient gentle breeze variation
+		var ambient_wind: float = (sin(Time.get_ticks_msec() * 0.0016) * 0.08 + sin(Time.get_ticks_msec() * 0.0031) * 0.04)
+
+		var total_angular_accel: float = restoring + damping + inertial + turn_whip + rocket_swing_torque + ambient_wind
 
 		# Semi-implicit Euler integration
 		swing_angular_velocity += total_angular_accel * delta
-		swing_angular_velocity = clampf(swing_angular_velocity, -28.0, 28.0)
+		var max_ang_vel: float = 24.0 if (is_event_boost_active or payload_tier >= 2) else 18.0
+		swing_angular_velocity = clampf(swing_angular_velocity, -max_ang_vel, max_ang_vel)
 
 		current_swing_angle += swing_angular_velocity * delta
 
-		# Limit angle to maximum allowed swing
-		var active_max_angle: float = 88.0 if is_turning else swing_max_angle_deg
+		# Maximum allowed swing angle limit
+		var active_max_angle: float = 88.0 if is_turning else (event_boost_max_angle_deg if (is_event_boost_active or payload_tier >= 2) else swing_max_angle_deg)
 		var max_rad: float = deg_to_rad(active_max_angle)
 		if absf(current_swing_angle) > max_rad:
 			current_swing_angle = clampf(current_swing_angle, -max_rad, max_rad)
-			swing_angular_velocity *= -0.72 # energetic elastic bounce against boom limit
+			swing_angular_velocity *= -0.65 # Elastic rebound off boom physical limit
 
-		# Prevent tiny floating-point jitter when near 0 and nearly still
-		if not is_turning and absf(current_swing_angle) < 0.001 and absf(swing_angular_velocity) < 0.005 and trolley_velocity.length_squared() < 1.0:
+		# Subtle resting settling
+		if not is_turning and not is_event_boost_active and absf(current_swing_angle) < 0.001 and absf(swing_angular_velocity) < 0.004 and trolley_velocity.length_squared() < 0.5:
 			current_swing_angle = 0.0
 			swing_angular_velocity = 0.0
 
@@ -895,6 +939,8 @@ func _launch_aimed_descent() -> void:
 	is_at_top = false
 	locked_aim_angle = current_swing_angle
 	locked_aim_dir = Vector2.DOWN.rotated(locked_aim_angle)
+	# Soften launch angular velocity into controlled descent
+	swing_angular_velocity = clampf(swing_angular_velocity, -2.5, 2.5)
 
 	# Ignite rocket thruster visuals for Boosted state
 	if (is_event_boost_active or payload_tier >= 2) and _rocket_visual:
@@ -946,15 +992,32 @@ func _update_deployed_trajectory(delta: float) -> void:
 			current_payload_level = PayloadLevel.BOTTOM
 			payload_level_changed.emit(current_payload_level)
 
-	# --- DYNAMIC SWING PHYSICS DURING DESCENT ---
-	# "ilk seviye de daha cok fizik olsun payload sallansin duz gitmesin"
-	# "2. seviyede payload uzerinde roket oldugundan dolayi hedefe kitlenmesi daha kolay ama fizikli ve daha eglenceli"
+	# --- STABLE PHYSICAL SWING DYNAMICS DURING DESCENT ---
 	var eff_len: float = maxf(current_rope_length, 60.0)
+	var length_ratio: float = clampf((current_rope_length - min_rope_length) / maxf(max_rope_length - min_rope_length, 1.0), 0.0, 1.0)
+
+	# 1. Restoring gravity torque pulling back toward vertical
 	var restoring: float = - (pendulum_gravity / eff_len) * sin(current_swing_angle)
-	var damping: float = - (pendulum_damping * 0.5) * swing_angular_velocity
-	var coriolis: float = - (2.0 * winch_rate / eff_len) * swing_angular_velocity
+
+	# 2. Cable damping: higher damping when extended prevents wild whipping/flying
+	var active_deployed_damping: float = pendulum_damping * lerpf(1.3, 2.5, length_ratio)
+	if is_carrying_cargo or is_carrying_water:
+		active_deployed_damping *= 0.8
+	if winch_rate < -5.0: # winching back up
+		active_deployed_damping *= 1.4
+	var damping: float = - active_deployed_damping * swing_angular_velocity
+
+	# 3. Controlled Coriolis torque
+	var coriolis: float = clampf(- (2.0 * winch_rate / eff_len) * swing_angular_velocity, -4.5, 4.5)
 
 	var total_deployed_accel: float = restoring + damping + coriolis
+
+	# 4. Inertial sway from trolley movement during deployment (smooth and bounded)
+	if delta > 0.0:
+		var trolley_accel_x: float = (trolley_velocity.x - prev_trolley_velocity.x) / delta
+		trolley_accel_x = clampf(trolley_accel_x, -1200.0, 1200.0)
+		var inertia_scale: float = 0.65 if (payload_tier == 1 and not is_event_boost_active) else 0.95
+		total_deployed_accel += (trolley_accel_x / eff_len) * cos(current_swing_angle) * inertia_scale
 
 	if is_event_boost_active or payload_tier >= 2:
 		# Tier 2 / Boosted: ROCKET-POWERED GUIDED HOOK
@@ -962,12 +1025,12 @@ func _update_deployed_trajectory(delta: float) -> void:
 			_rocket_visual.set_firing(true)
 			_rocket_visual.flame_scale = 1.45 if (is_descending or trolley_velocity.length() > 60.0) else 1.0
 
-		# 1. Active Rocket Guidance towards target if locked or nearby
+		# 1. Rocket Guidance towards target if locked or nearby
 		if locked_target_node and is_instance_valid(locked_target_node):
 			var to_target: Vector2 = locked_target_node.global_position - _get_rope_origin()
 			var target_angle: float = Vector2.DOWN.angle_to(to_target)
 			var angle_err: float = target_angle - current_swing_angle
-			var rocket_thrust: float = clampf(angle_err * 46.0 - swing_angular_velocity * 4.2, -32.0, 32.0)
+			var rocket_thrust: float = clampf(angle_err * 14.0 - swing_angular_velocity * 2.8, -9.0, 9.0)
 			total_deployed_accel += rocket_thrust
 		else:
 			# Auto-homing scan for any nearby grabbable rock or stone wall
@@ -976,29 +1039,38 @@ func _update_deployed_trajectory(delta: float) -> void:
 				var to_t: Vector2 = soft_target.global_position - _get_rope_origin()
 				var t_angle: float = Vector2.DOWN.angle_to(to_t)
 				var a_err: float = t_angle - current_swing_angle
-				total_deployed_accel += clampf(a_err * 30.0, -22.0, 22.0)
+				total_deployed_accel += clampf(a_err * 10.0, -7.0, 7.0)
 
-		# 2. Mid-air manual rocket steering with A/D / Left/Right keys
+		# 2. Mid-air manual rocket steering with A/D keys
 		var steer_input: float = _get_horizontal_input()
 		if steer_input != 0.0:
-			total_deployed_accel += - steer_input * 26.0
+			total_deployed_accel += - steer_input * 5.5
 	else:
-		# Tier 1: PURE PENDULUM SWING PHYSICS (Claw swings freely with real momentum and inertia)
 		if _rocket_visual:
 			_rocket_visual.set_firing(false)
-		if trolley_velocity.length_squared() > 10.0:
-			total_deployed_accel += (trolley_velocity.x / eff_len) * 3.2
 
-	# Integrate swing during deployment
+	# Semi-implicit Euler integration with length-scaled angular velocity limits
 	swing_angular_velocity += total_deployed_accel * delta
-	swing_angular_velocity = clampf(swing_angular_velocity, -24.0, 24.0)
+	var max_deployed_ang_vel: float = clampf(420.0 / eff_len, 0.85, 3.2)
+	if is_event_boost_active or payload_tier >= 2:
+		max_deployed_ang_vel *= 1.35
+	swing_angular_velocity = clampf(swing_angular_velocity, -max_deployed_ang_vel, max_deployed_ang_vel)
+
 	current_swing_angle += swing_angular_velocity * delta
 
-	# Limit angle to boom limit
-	var max_rad: float = deg_to_rad(swing_max_angle_deg)
+	# Max swing angle scales with cable length: tighter at bottom so long cable doesn't sweep across the entire screen
+	var base_max_angle: float = swing_max_angle_deg if (payload_tier == 1 and not is_event_boost_active) else event_boost_max_angle_deg
+	var max_allowed_deg: float = lerpf(base_max_angle, 20.0, length_ratio)
+	if is_event_boost_active or payload_tier >= 2:
+		max_allowed_deg = lerpf(base_max_angle, 30.0, length_ratio)
+	var max_rad: float = deg_to_rad(max_allowed_deg)
+
 	if absf(current_swing_angle) > max_rad:
 		current_swing_angle = clampf(current_swing_angle, -max_rad, max_rad)
-		swing_angular_velocity *= -0.5
+		swing_angular_velocity *= -0.3
+
+	# Track previous trolley velocity
+	prev_trolley_velocity = trolley_velocity
 
 	# Update payload position and velocities along swinging cable
 	var swing_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
@@ -1042,8 +1114,7 @@ func _update_deployed_trajectory(delta: float) -> void:
 				payload_sprite.play("default")
 
 		# Resume swinging seamlessly from current angle
-		current_swing_angle = locked_aim_angle
-		swing_angular_velocity = 0.0
+		swing_angular_velocity = clampf(swing_angular_velocity, -10.0, 10.0)
 
 
 # ==============================================================================
@@ -1240,6 +1311,9 @@ func _resolve_landing() -> void:
 				is_descending = false
 				has_resolved_landing = true
 
+				if rock_to_consume.has_method("play_pickup_sound"):
+					rock_to_consume.play_pickup_sound()
+
 				if rock_to_consume.has_method("consume"):
 					rock_to_consume.consume()
 				else:
@@ -1262,6 +1336,8 @@ func _resolve_landing() -> void:
 			if payload:
 				payload.add_collision_exception_with(grabbed_body)
 			cargo_picked_up.emit(grabbed_body)
+			if grabbed_body.has_method("play_pickup_sound"):
+				grabbed_body.play_pickup_sound()
 			_play_payload_catch_sound()
 			_trigger_pickup_screen_shake()
 			_trigger_hit_stop()
@@ -1416,23 +1492,23 @@ func _release_cargo() -> void:
 		var angular_vel: float = swing_angular_velocity
 		var tangent_dir: Vector2 = Vector2(-swing_dir.y, swing_dir.x)
 
-		var fling_multiplier: float = fling_multiplier_tier2 if payload_tier >= 2 else fling_multiplier_tier1
-		var trolley_mult: float = 1.4 if payload_tier >= 2 else 1.15
+		var fling_multiplier: float = fling_multiplier_tier2 if (payload_tier >= 2 or is_event_boost_active) else fling_multiplier_tier1
+		var trolley_mult: float = 1.45 if (payload_tier >= 2 or is_event_boost_active) else 1.15
 		var tangential_speed: float = (angular_vel * current_rope_length) * fling_multiplier
 
 		var raw_momentum: Vector2 = tangent_dir * tangential_speed + trolley_velocity * trolley_mult
 
 		# If there is real physics momentum (active swing or moving trolley), fling with momentum!
-		if absf(angular_vel) > 0.12 or trolley_velocity.length() > 35.0:
+		if absf(angular_vel) > 0.08 or trolley_velocity.length() > 25.0:
 			release_velocity = raw_momentum
 			# Loft assist: if releasing while swinging upward, add upward fling trajectory
 			if (tangent_dir.y * angular_vel) < 0.0:
-				release_velocity.y -= absf(tangential_speed) * 0.28
+				release_velocity.y -= absf(tangential_speed) * 0.32
 
-			# Tier 2 rocket burst boost in the fling direction only if already flinging
-			if payload_tier >= 2 and release_velocity.length() > 50.0:
+			# Event Rock / Rocket burst boost in the fling direction
+			if (payload_tier >= 2 or is_event_boost_active) and release_velocity.length() > 40.0:
 				var fling_dir: Vector2 = release_velocity.normalized()
-				release_velocity += fling_dir * 140.0
+				release_velocity += fling_dir * 180.0
 		else:
 			# No significant momentum/physics: drop straight down!
 			release_velocity = Vector2(0.0, 30.0)
@@ -1751,22 +1827,22 @@ func _release_water() -> void:
 		var angular_vel: float = swing_angular_velocity
 		var tangent_dir: Vector2 = Vector2(-swing_dir.y, swing_dir.x)
 
-		var fling_multiplier: float = fling_multiplier_tier2 if payload_tier >= 2 else fling_multiplier_tier1
-		var trolley_mult: float = 1.4 if payload_tier >= 2 else 1.15
+		var fling_multiplier: float = fling_multiplier_tier2 if (payload_tier >= 2 or is_event_boost_active) else fling_multiplier_tier1
+		var trolley_mult: float = 1.45 if (payload_tier >= 2 or is_event_boost_active) else 1.15
 		var tangential_speed: float = (angular_vel * current_rope_length) * fling_multiplier
 
 		release_velocity = tangent_dir * tangential_speed + trolley_velocity * trolley_mult
 
 		# Loft assist: if releasing while swinging upward, add upward fling trajectory
 		if (tangent_dir.y * angular_vel) < 0.0:
-			release_velocity.y -= absf(tangential_speed) * 0.28
+			release_velocity.y -= absf(tangential_speed) * 0.32
 
-		# Tier 2 rocket burst boost in the fling direction
-		if payload_tier >= 2:
+		# Tier 2 / Event Rock rocket burst boost in the fling direction
+		if payload_tier >= 2 or is_event_boost_active:
 			var fling_dir: Vector2 = release_velocity.normalized()
 			if fling_dir == Vector2.ZERO:
 				fling_dir = Vector2(float(facing_direction), -0.5).normalized()
-			release_velocity += fling_dir * 180.0
+			release_velocity += fling_dir * 220.0
 
 		# Ensure minimum satisfying water toss forward
 		if release_velocity.length() < 120.0:
@@ -2107,15 +2183,92 @@ func _apply_payload_rotation_limit(_delta: float) -> void:
 			payload.angular_velocity = 0.0
 
 
+func _init_rope_physics() -> void:
+	rope_points.clear()
+	rope_prev_points.clear()
+	var origin_pos: Vector2 = _get_rope_origin()
+	var target_end: Vector2 = payload.global_position if payload else (origin_pos + Vector2.DOWN * current_rope_length)
+	var seg_count: int = max(rope_segments, 4)
+	for i in range(seg_count):
+		var t: float = float(i) / float(seg_count - 1)
+		var pt: Vector2 = origin_pos.lerp(target_end, t)
+		rope_points.append(pt)
+		rope_prev_points.append(pt)
+
+
+func _update_rope_physics(delta: float) -> void:
+	var seg_count: int = max(rope_segments, 4)
+	if delta <= 0.0 or rope_points.size() != seg_count:
+		_init_rope_physics()
+		return
+
+	var origin_pos: Vector2 = _get_rope_origin()
+	var payload_pos: Vector2 = payload.global_position if payload else (origin_pos + Vector2.DOWN.rotated(current_swing_angle) * current_rope_length)
+
+	# Pin endpoints strictly
+	rope_points[0] = origin_pos
+	rope_prev_points[0] = origin_pos
+	rope_points[seg_count - 1] = payload_pos
+	rope_prev_points[seg_count - 1] = payload_pos
+
+	# Target rest segment length based on instantaneous active cable length
+	var segment_len: float = current_rope_length / float(seg_count - 1)
+
+	# Atmospheric forces on cable (gravity + subtle upper breeze)
+	var cable_gravity: Vector2 = Vector2.DOWN * 850.0
+
+	# Verlet integration step for free intermediate points
+	var delta_sq: float = delta * delta
+	for i in range(1, seg_count - 1):
+		var cur_pos: Vector2 = rope_points[i]
+		var prev_pos: Vector2 = rope_prev_points[i]
+		var vel: Vector2 = (cur_pos - prev_pos) * rope_damping
+
+		# Prevent unstable numerical velocity blow-up under extreme frame hitching
+		if vel.length_squared() > 160000.0:
+			vel = vel.normalized() * 400.0
+
+		var next_pos: Vector2 = cur_pos + vel + cable_gravity * delta_sq
+		rope_prev_points[i] = cur_pos
+		rope_points[i] = next_pos
+
+	# Distance constraint relaxation passes (enforces realistic steel cable stiffness)
+	for iter in range(rope_constraint_iterations):
+		rope_points[0] = origin_pos
+		rope_points[seg_count - 1] = payload_pos
+
+		for i in range(seg_count - 1):
+			var p1: Vector2 = rope_points[i]
+			var p2: Vector2 = rope_points[i + 1]
+			var delta_vec: Vector2 = p2 - p1
+			var dist: float = delta_vec.length()
+
+			if dist > 0.0001:
+				var diff: float = (dist - segment_len) / dist
+				if i == 0:
+					rope_points[i + 1] -= delta_vec * diff
+				elif i + 1 == seg_count - 1:
+					rope_points[i] += delta_vec * diff
+				else:
+					rope_points[i] += delta_vec * (0.5 * diff)
+					rope_points[i + 1] -= delta_vec * (0.5 * diff)
+
+	# Ensure endpoints stay strictly anchored after relaxation
+	rope_points[0] = origin_pos
+	rope_points[seg_count - 1] = payload_pos
+
+
 func _update_rope_visual() -> void:
 	if not line_2d or not trolley_pivot or not payload:
 		return
 
+	var seg_count: int = max(rope_segments, 4)
+	if rope_points.size() != seg_count:
+		_init_rope_physics()
+
 	line_2d.clear_points()
-	var start_pos: Vector2 = line_2d.to_local(_get_rope_origin())
-	var end_pos: Vector2 = line_2d.to_local(payload.global_position)
-	line_2d.add_point(start_pos)
-	line_2d.add_point(end_pos)
+	for pt in rope_points:
+		line_2d.add_point(line_2d.to_local(pt))
 
 
 # ==============================================================================
@@ -2192,24 +2345,22 @@ func _start_sprite_idle_shake(target: CanvasItem, index: int) -> void:
 # ==============================================================================
 func set_payload_tier(tier: int) -> void:
 	payload_tier = clampi(tier, 1, 2)
-	if payload_tier == 2:
+	if payload_tier == 2 or is_event_boost_active:
 		trolley_speed = trolley_speed_tier2
 		rope_winch_speed = rope_winch_speed_tier2
-		swing_max_angle_deg = 58.0
-		pendulum_gravity = 740.0
-		pendulum_damping = 1.65
+		swing_max_angle_deg = event_boost_max_angle_deg
+		pendulum_gravity = 800.0
+		pendulum_damping = 0.95
 		swing_inertia_scale = swing_inertia_tier2
-		movement_swing_strength = movement_swing_strength_tier2
 		turn_swing_kick = turn_swing_kick_tier2
-		print("[Crane] Payload Tier 2 Aktif! (Trolley: ", trolley_speed, "px/s, Winch: ", rope_winch_speed, "px/s, Turn Kick: ", turn_swing_kick, ").")
+		print("[Crane] Payload Tier 2 / Event Boost Aktif! (Trolley: ", trolley_speed, "px/s, Winch: ", rope_winch_speed, "px/s, Turn Kick: ", turn_swing_kick, ").")
 	else:
 		trolley_speed = trolley_speed_tier1
 		rope_winch_speed = rope_winch_speed_tier1
-		swing_max_angle_deg = 50.0
-		pendulum_gravity = 780.0
-		pendulum_damping = 1.8
+		swing_max_angle_deg = 52.0
+		pendulum_gravity = 840.0
+		pendulum_damping = 1.05
 		swing_inertia_scale = swing_inertia_tier1
-		movement_swing_strength = movement_swing_strength_tier1
 		turn_swing_kick = turn_swing_kick_tier1
 		if _rocket_visual:
 			_rocket_visual.set_firing(false)
@@ -2227,10 +2378,10 @@ func trigger_event_boost(duration: float = -1.0) -> void:
 
 	if _rocket_visual:
 		_rocket_visual.set_firing(true)
-		_rocket_visual.flame_scale = 1.2
+		_rocket_visual.flame_scale = 1.35
 
 	_play_event_boost_pickup_effect()
-	print("[Crane] ★ EVENT ROCK BOOST AKTİF! ", boost_time, " saniye boyunca çift roketli hızlandırma devrede.")
+	print("[Crane] ★ EVENT ROCK BOOST AKTİF! ", boost_time, " saniye boyunca yüksek güçlü roket fiziği ve hızlandırma devrede.")
 
 
 func _end_event_boost() -> void:
@@ -2249,7 +2400,7 @@ func _end_event_boost() -> void:
 		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 
-	print("[Crane] Event Rock boost süresi tamamlandı. Standart 'default' animasyonuna dönüldü.")
+	print("[Crane] Event Rock boost süresi tamamlandı. Standart fiziğe dönüldü.")
 
 
 func _play_event_boost_pickup_effect() -> void:

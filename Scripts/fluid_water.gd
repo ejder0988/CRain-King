@@ -24,7 +24,7 @@ var _shape_large: CircleShape2D
 
 @export_group("Fluid Water Spawn Settings")
 ## Number of water drops to spawn at game start from this node's position (set to 0 for no initial water)
-@export var initial_drops: int = 200
+@export var initial_drops: int = 160
 ## 0: POINT (drops pour down from this node's position), 1: AREA (drops distributed inside spawn_area)
 @export_enum("POINT:0", "AREA:1") var spawn_mode: int = 0
 ## Size of the pool area to distribute drops inside if spawn_mode is AREA
@@ -47,8 +47,8 @@ var _shape_large: CircleShape2D
 @export var particle_linear_damp: float = 0.3
 ## Drops are only destroyed if they fall into the abyss below this Y value
 @export var kill_y: float = 3000.0
-## Maximum particle limit (optimized to ~250 for multi-scale macro water)
-@export var max_particles: int = 250
+## Maximum particle limit (increased to 650 for expansive water mass)
+@export var max_particles: int = 650
 
 
 @export_group("Fluid Collision")
@@ -129,6 +129,45 @@ var _smoothed_agitation: float = 0.0
 var _merge_timer: float = 0.0
 var _tsunami_active: bool = false
 var _tsunami_cooldown: float = 0.0
+
+enum TsunamiPhase {
+	IDLE,
+	DRAWBACK,      ## 1. Aşama: Suların sağa (ekran dışı havuza) çekilmesi (2.0s)
+	ROLLING_WAVE,  ## 2. Aşama: Geriden gelen hareketli dalga cephesi (2.5s)
+	IMPACT,        ## 3. Aşama: Duvara çarpma anı
+	BACKWASH       ## 4. Aşama: Suların sağa doğal geri çekilmesi (3.0s)
+}
+
+var _tsunami_phase: TsunamiPhase = TsunamiPhase.IDLE
+var _tsunami_phase_timer: float = 0.0
+var _wave_front_x: float = 2100.0
+var _wave_start_x: float = 2100.0
+var _wave_travel_speed: float = 224.0
+var _surge_cycle_level: int = 1
+var _cached_stone_wall_x: float = 1540.0
+var _temp_boost_particles: Dictionary = {} # RID -> true
+var _impact_foam_timer: float = 0.0
+var _wave_curl_node: Node2D = null
+
+# Gradual Rain Reservoir Fill Variables:
+var _rain_reservoir_drops_to_spawn: int = 0
+var _rain_reservoir_spawn_interval: float = 0.0
+var _rain_reservoir_timer: float = 0.0
+
+# Orphan Ball Cleaner Timer:
+var _orphan_clean_timer: float = 0.0
+
+# Backward compatibility flags
+var _tsunami_surge_active: bool:
+	get: return _tsunami_phase == TsunamiPhase.ROLLING_WAVE
+var _accumulating: bool = false
+
+
+func _get_wall_x() -> float:
+	var sw = get_tree().get_first_node_in_group("stone_wall")
+	if sw and is_instance_valid(sw):
+		_cached_stone_wall_x = sw.global_position.x
+	return _cached_stone_wall_x
 
 
 func _set_water_shader_param(param_name: String, value: Variant) -> void:
@@ -220,6 +259,24 @@ func _ready() -> void:
 
 	if initial_drops > 0:
 		spawn_initial_drops(initial_drops)
+
+	# Setup dynamic wave curl visual node
+	_setup_wave_curl_visual()
+
+	# Ensure impenetrable right boundary wall at X = 2400.0 (world space, covering the expanded off-screen pool)
+	var boundary := StaticBody2D.new()
+	boundary.name = "RightScreenBoundaryWall"
+	boundary.top_level = true
+	boundary.global_position = Vector2.ZERO
+	var b_col := CollisionShape2D.new()
+	var b_seg := SegmentShape2D.new()
+	b_seg.a = Vector2(2400.0, -1000.0)
+	b_seg.b = Vector2(2400.0, 2000.0)
+	b_col.shape = b_seg
+	boundary.add_child(b_col)
+	boundary.collision_layer = water_collision_layer
+	boundary.collision_mask = water_collision_mask
+	add_child(boundary)
 
 	print("[FluidWater] Ready! Multi-Scale Physics active. Initial bodies: ", objects.size(), ". Controls: 'G' burst, 'P' pointer.")
 
@@ -344,9 +401,14 @@ func create_object(pos: Vector2, initial_vel: Vector2 = Vector2.ZERO, tier: int 
 	rs.canvas_item_add_texture_rect(img, Rect2(-w * 0.5, -h * 0.5, w, h), tex_rid)
 	if _particle_material:
 		rs.canvas_item_set_material(img, _particle_material.get_rid())
-	var local_trans := trans
-	local_trans.origin -= global_position
-	rs.canvas_item_set_transform(img, local_trans)
+	var local_pos := pos - global_position
+	var initial_trans: Transform2D
+	if pos.x < _cached_stone_wall_x and tier == WaterTier.SMALL:
+		initial_trans = Transform2D(0.0, Vector2(1.6, 0.45), 0.0, local_pos)
+	else:
+		initial_trans = trans
+		initial_trans.origin = local_pos
+	rs.canvas_item_set_transform(img, initial_trans)
 
 	objects.append([object, img, tier, 0.0])
 	return object
@@ -365,15 +427,94 @@ func _physics_process(delta: float) -> void:
 		_merge_timer = 0.0
 		_merge_dense_particles()
 
+	# Yağmur aşaması boyunca sağdaki genişletilmiş havuzda (X > 1920) kademeli rezervuar dolumu
+	if _rain_reservoir_drops_to_spawn > 0:
+		_rain_reservoir_timer += delta
+		while _rain_reservoir_timer >= _rain_reservoir_spawn_interval and _rain_reservoir_drops_to_spawn > 0:
+			_rain_reservoir_timer -= _rain_reservoir_spawn_interval
+			_rain_reservoir_drops_to_spawn -= 1
+			if objects.size() < max_particles:
+				var rx: float = randf_range(1960.0, 2360.0)
+				var ry: float = randf_range(720.0, 830.0)
+				var rvel: Vector2 = Vector2(randf_range(-15.0, 15.0), randf_range(30.0, 90.0))
+				var tier: int = WaterTier.SMALL
+				var r_rnd := randf()
+				if r_rnd < 0.20:
+					tier = WaterTier.LARGE
+				elif r_rnd < 0.50:
+					tier = WaterTier.MEDIUM
+				create_object(Vector2(rx, ry), rvel, tier)
+
+	# Tek Başına Kalan Suların Temizliği (Orphan Ball Cleaner - 0.15 sn periyotla)
+	_orphan_clean_timer += delta
+	if _orphan_clean_timer >= 0.15:
+		_orphan_clean_timer = 0.0
+		_clean_orphan_particles()
+
 	if _tsunami_cooldown > 0.0:
 		_tsunami_cooldown -= delta
 		if _tsunami_cooldown <= 0.0:
 			_tsunami_active = false
 
+	# Impact foam timer decay
+	if _impact_foam_timer > 0.0:
+		_impact_foam_timer -= delta
+		_set_water_shader_param("tsunami_impact_foam", clampf(_impact_foam_timer * 2.0, 0.0, 1.0))
+	else:
+		_set_water_shader_param("tsunami_impact_foam", 0.0)
+
+	# Process 4-Phase Tsunami State Machine
+	var crest_height: float = 20.0 + float(_surge_cycle_level - 1) * (245.0 / 23.0)
+	var target_wave_crest_y: float = 917.0 - crest_height
+	var viewport_w: float = get_viewport_rect().size.x if is_inside_tree() else 1920.0
+	var viewport_h: float = get_viewport_rect().size.y if is_inside_tree() else 1080.0
+
+	match _tsunami_phase:
+		TsunamiPhase.DRAWBACK:
+			_tsunami_phase_timer -= delta
+			_set_water_shader_param("tsunami_wave_front_uv", -1.0)
+			if _wave_curl_node:
+				_wave_curl_node.visible = false
+			if _tsunami_phase_timer <= 0.0:
+				_tsunami_phase = TsunamiPhase.IDLE
+
+		TsunamiPhase.ROLLING_WAVE:
+			_tsunami_phase_timer -= delta
+			_wave_front_x -= _wave_travel_speed * delta
+
+			var front_uv_x: float = _wave_front_x / viewport_w
+			var crest_uv_y: float = target_wave_crest_y / viewport_h
+			_set_water_shader_param("tsunami_wave_front_uv", front_uv_x)
+			_set_water_shader_param("tsunami_crest_uv_y", crest_uv_y)
+
+			# Position dynamic wave curl visual
+			if _wave_curl_node and _particle_container:
+				_wave_curl_node.visible = true
+				_wave_curl_node.position = Vector2(_wave_front_x, target_wave_crest_y) - global_position
+
+			# Check if wave reached the wall
+			if _wave_front_x <= _cached_stone_wall_x or _tsunami_phase_timer <= 0.0:
+				_on_wave_impact_wall(target_wave_crest_y)
+
+		TsunamiPhase.IMPACT:
+			_tsunami_phase_timer -= delta
+			if _wave_curl_node:
+				_wave_curl_node.visible = false
+			if _tsunami_phase_timer <= 0.0:
+				start_tsunami_backwash(3.0)
+
+		TsunamiPhase.BACKWASH:
+			_tsunami_phase_timer -= delta
+			_set_water_shader_param("tsunami_wave_front_uv", -1.0)
+			if _wave_curl_node:
+				_wave_curl_node.visible = false
+			if _tsunami_phase_timer <= 0.0:
+				_tsunami_phase = TsunamiPhase.IDLE
+
 	var mouse_pos := get_global_mouse_position()
 	var mouse_down := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 	var icon_scale := icon_node.scale.x if icon_node and is_instance_valid(icon_node) else 1.0
-	var active_disturbance: bool = mouse_down or payload_holding_water or payload_stir_active or _tsunami_active
+	var active_disturbance: bool = mouse_down or payload_holding_water or payload_stir_active or _tsunami_active or _tsunami_phase != TsunamiPhase.IDLE
 
 	var total_vx: float = 0.0
 	var total_speed: float = 0.0
@@ -427,10 +568,40 @@ func _physics_process(delta: float) -> void:
 
 		var vel_var = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
 		var cur_v: Vector2 = vel_var if vel_var != null else Vector2.ZERO
+
+		# 0. Right Screen Boundary Protection (expanded off-screen pool up to X ~ 2380)
+		if world_pos.x > 2380.0:
+			world_pos.x = 2380.0
+			trans.origin.x = 2380.0
+			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM, trans)
+			if cur_v.x > 0.0:
+				cur_v.x = -absf(cur_v.x) * 0.3
+				ps.body_set_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, cur_v)
+
+		# BACKWASH sırasında ekran dışına (X > 1950) dönen geçici takviye suları sil
+		if _tsunami_phase == TsunamiPhase.BACKWASH and world_pos.x > 1950.0:
+			if _temp_boost_particles.has(object):
+				_temp_boost_particles.erase(object)
+				objects.remove_at(i)
+				ps.free_rid(object)
+				RenderingServer.free_rid(img)
+				continue
+
+		# 1. HARD VELOCITY CLAMP: Absolute safety clamp prevents water from rocketing skyward off slopes or walls
+		# Horizontal speed never exceeds -420.0 px/s; Upward vertical speed never exceeds -130.0 px/s!
+		var clamped_vx: float = clampf(cur_v.x, -420.0, 250.0)
+		var clamped_vy: float = clampf(cur_v.y, -130.0, 500.0)
+		if clamped_vx != cur_v.x or clamped_vy != cur_v.y:
+			cur_v = Vector2(clamped_vx, clamped_vy)
+			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, cur_v)
+
 		var cur_speed := cur_v.length()
 
-		# 2. High-Velocity Splitting (Tsunami surge or violent catapulting breaks large sources into lively spray)
-		if tier == WaterTier.LARGE and cur_speed > 450.0 and objects.size() < max_particles - 4:
+		# 2. BÖLGESEL SINIRLANDIRMA (No Big Balls on Left Side):
+		# Duvarın sol tarafındaki düz zeminde (pos.x < wall_x) ASLA MEDIUM veya LARGE su parçacığı bulunamaz!
+		# Duvarı aşan her MEDIUM veya LARGE parçacık duvarı geçtiği an (pos.x < wall_x) anında silinir ve yatay eksende [-20px, 0px, +20px] 3 adet SMALL parçacığa bölünür.
+		var wall_x := _get_wall_x()
+		if (tier == WaterTier.MEDIUM or tier == WaterTier.LARGE) and world_pos.x < wall_x:
 			objects.remove_at(i)
 			if _held_particles.has(object):
 				_held_particles.erase(object)
@@ -438,31 +609,53 @@ func _physics_process(delta: float) -> void:
 				_payload_released_particles.erase(object)
 			ps.free_rid(object)
 			RenderingServer.free_rid(img)
-			var off1 := Vector2(-12.0, randf_range(-6.0, 6.0))
-			var off2 := Vector2(12.0, randf_range(-6.0, 6.0))
-			create_object(world_pos + off1, cur_v + Vector2(-15.0, -10.0), WaterTier.MEDIUM)
-			create_object(world_pos + off2, cur_v + Vector2(15.0, -10.0), WaterTier.MEDIUM)
-			continue
-		elif tier == WaterTier.MEDIUM and cur_speed > 550.0 and objects.size() < max_particles - 4:
-			objects.remove_at(i)
-			if _held_particles.has(object):
-				_held_particles.erase(object)
-			if _payload_released_particles.has(object):
-				_payload_released_particles.erase(object)
-			ps.free_rid(object)
-			RenderingServer.free_rid(img)
-			var off1 := Vector2(-8.0, randf_range(-4.0, 4.0))
-			var off2 := Vector2(8.0, randf_range(-4.0, 4.0))
-			create_object(world_pos + off1, cur_v + Vector2(-10.0, -8.0), WaterTier.SMALL)
-			create_object(world_pos + off2, cur_v + Vector2(10.0, -8.0), WaterTier.SMALL)
+			var offsets: Array[float] = [-20.0, 0.0, 20.0]
+			for ox in offsets:
+				create_object(Vector2(world_pos.x + ox, world_pos.y), cur_v, WaterTier.SMALL)
 			continue
 
-		# 4. Sleeping particle optimization: skip RenderingServer IPC update if particle is static
+		# 3. High-Velocity Splitting (Yalnızca normal/sakin zamanlarda vinçten fırlatılan büyük su kütleleri için; tsunami sırasında parçalanma kesinlikle engellenir)
+		if _tsunami_phase == TsunamiPhase.IDLE:
+			if tier == WaterTier.LARGE and cur_speed > 520.0 and objects.size() < max_particles - 4:
+				objects.remove_at(i)
+				if _held_particles.has(object):
+					_held_particles.erase(object)
+				if _payload_released_particles.has(object):
+					_payload_released_particles.erase(object)
+				ps.free_rid(object)
+				RenderingServer.free_rid(img)
+				var off1 := Vector2(-12.0, randf_range(-6.0, 6.0))
+				var off2 := Vector2(12.0, randf_range(-6.0, 6.0))
+				create_object(world_pos + off1, cur_v + Vector2(-15.0, -10.0), WaterTier.MEDIUM)
+				create_object(world_pos + off2, cur_v + Vector2(15.0, -10.0), WaterTier.MEDIUM)
+				continue
+			elif tier == WaterTier.MEDIUM and cur_speed > 620.0 and objects.size() < max_particles - 4:
+				objects.remove_at(i)
+				if _held_particles.has(object):
+					_held_particles.erase(object)
+				if _payload_released_particles.has(object):
+					_payload_released_particles.erase(object)
+				ps.free_rid(object)
+				RenderingServer.free_rid(img)
+				var off1 := Vector2(-8.0, randf_range(-4.0, 4.0))
+				var off2 := Vector2(8.0, randf_range(-4.0, 4.0))
+				create_object(world_pos + off1, cur_v + Vector2(-10.0, -8.0), WaterTier.SMALL)
+				create_object(world_pos + off2, cur_v + Vector2(10.0, -8.0), WaterTier.SMALL)
+				continue
+
+		# 4. Sleeping particle optimization & Flattened Shallow Layer for Left Side:
 		var is_sleeping: bool = bool(ps.body_get_state(object, PhysicsServer2D.BODY_STATE_SLEEPING))
 		if not is_sleeping or active_disturbance:
-			var local_trans := trans
-			local_trans.origin -= global_position
-			RenderingServer.canvas_item_set_transform(img, local_trans)
+			var local_pos := trans.origin - global_position
+			if world_pos.x < wall_x and tier == WaterTier.SMALL:
+				# Zemine Yapışık Sığ Su Ölçeklemesi (Flattened Shallow Layer):
+				# Dikeyde basık (0.45), yatayda geniş (1.6) -> elips: Vector2(1.6, 0.45)
+				var shallow_trans := Transform2D(0.0, Vector2(1.6, 0.45), 0.0, local_pos)
+				RenderingServer.canvas_item_set_transform(img, shallow_trans)
+			else:
+				var local_trans := trans
+				local_trans.origin = local_pos
+				RenderingServer.canvas_item_set_transform(img, local_trans)
 
 		total_vx += cur_v.x
 		total_speed += cur_speed
@@ -501,8 +694,52 @@ func _physics_process(delta: float) -> void:
 				var push_force: Vector2 = push_dir * 180.0 + payload_linear_vel * 0.4
 				ps.body_set_constant_force(object, push_force * mass_mult)
 				force_applied = true
+		# D. TSUNAMI 4-PHASE FORCES:
+		# Phase 1: DRAWBACK (suları sağa, ekran dışı havuza doğru çek)
+		elif _tsunami_phase == TsunamiPhase.DRAWBACK and world_pos.x < 2350.0:
+			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_SLEEPING, false)
+			var p_mass: float = particle_mass * mass_mult
+			var pull_force := Vector2(280.0 * p_mass, 25.0 * p_mass)
+			ps.body_set_constant_force(object, pull_force)
+			force_applied = true
 
-		if not force_applied and not _tsunami_active:
+		# Phase 2: ROLLING_WAVE (hareketli dalga cephesi ve sağ havuzdaki tüm su kütlesinin sola güçlü hücumu)
+		elif _tsunami_phase == TsunamiPhase.ROLLING_WAVE and world_pos.x >= (_cached_stone_wall_x - 30.0):
+			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_SLEEPING, false)
+			var p_mass: float = particle_mass * mass_mult
+			var push_x: float = -950.0 * p_mass
+			var push_y: float = -80.0 * p_mass # Kavisli sahili tırmanma desteği (hafif yukarı bias)
+
+			# Hafif kavisli ve yükselen zemin bölgesi (X: 1540 - 1980):
+			# Su kavisli tepecikte takılmasın diye tepeyi rahatça aşacak ekstra yukarı & sola itme verilir
+			if world_pos.x >= _cached_stone_wall_x and world_pos.x <= 1980.0:
+				push_x = -1200.0 * p_mass
+				push_y = -120.0 * p_mass
+
+			# Dalga tepe noktası (_wave_front_x etrafı)
+			if world_pos.x <= _wave_front_x + 80.0:
+				if world_pos.y > target_wave_crest_y:
+					push_y = minf(push_y, -90.0 * p_mass)
+				else:
+					push_y = 30.0 * p_mass
+
+			ps.body_set_constant_force(object, Vector2(push_x, push_y))
+			force_applied = true
+
+			# Yükseklik tavanı: parçacıklar aşırı gökyüzüne fırlamasın diye sadece dalga tavanını aşarsa yumuşakça yönlendir
+			if world_pos.y < (target_wave_crest_y - 30.0):
+				cur_v.y = maxf(cur_v.y, 10.0)
+				ps.body_set_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, cur_v)
+
+		# Phase 3 & 4: IMPACT & BACKWASH (dalga duvara vurduktan sonra suların sağa doğal geri çekilmesi)
+		elif _tsunami_phase == TsunamiPhase.BACKWASH and world_pos.x > _cached_stone_wall_x:
+			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_SLEEPING, false)
+			var p_mass: float = particle_mass * mass_mult
+			var recede_force := Vector2(250.0 * p_mass, 20.0 * p_mass)
+			ps.body_set_constant_force(object, recede_force)
+			force_applied = true
+
+		if not force_applied and not _tsunami_active and _tsunami_phase == TsunamiPhase.IDLE:
 			ps.body_set_constant_force(object, Vector2.ZERO)
 
 	if active_particle_count > 0:
@@ -553,6 +790,11 @@ func _merge_dense_particles() -> void:
 			continue
 		var trans: Transform2D = trans_var
 		var p: Vector2 = trans.origin
+
+		# Duvarın sol tarafında (pos.x <= wall_x + 20.0) ASLA birleşme olamaz, sol taraf daima sığ su kalır!
+		if p.x <= (_get_wall_x() + 20.0):
+			continue
+
 		var cell_key := Vector2i(int(floor(p.x / cell_size)), int(floor(p.y / cell_size)))
 
 		if tier == WaterTier.SMALL:
@@ -665,21 +907,326 @@ func _merge_dense_particles() -> void:
 		create_object(spawn_info[0], spawn_info[1], spawn_info[2])
 
 
-## Triggers or updates a global or directional tsunami surge across the water body
-func apply_tsunami_surge(direction: Vector2, force: float, min_x: float = -INF, max_x: float = INF) -> void:
-	_tsunami_active = true
-	_tsunami_cooldown = 1.5
+## Phase 1: DRAWBACK - Suları sağ tarafa (ekran dışı havuza) yumuşakça çeker (2.0s)
+func start_tsunami_drawback(duration: float = 2.0) -> void:
+	_tsunami_phase = TsunamiPhase.DRAWBACK
+	_tsunami_phase_timer = duration
+	_set_water_shader_param("tsunami_wave_front_uv", -1.0)
+	if _wave_curl_node:
+		_wave_curl_node.visible = false
+	print("[FluidWater] Tsunami DRAWBACK başladı! Sular geriye (sağ havuza) çekiliyor. Süre: %.1fs" % duration)
+
+
+## Phase 2: ROLLING_WAVE - Ekran dışından gelip tuğla duvara doğru ilerleyen hareketli dalga cephesi (2.5s)
+func start_rolling_wave(duration: float = 2.5, cycle_level: int = 1) -> void:
+	_tsunami_phase = TsunamiPhase.ROLLING_WAVE
+	_tsunami_phase_timer = duration
+	_surge_cycle_level = clampi(cycle_level, 1, 24)
+
+	var sw = get_tree().get_first_node_in_group("stone_wall")
+	if sw and is_instance_valid(sw):
+		_cached_stone_wall_x = sw.global_position.x
+	else:
+		_cached_stone_wall_x = 1540.0
+
+	_wave_start_x = global_position.x + 250.0 # Ekranın sağ dışındaki havuz (~2104.0)
+	_wave_front_x = _wave_start_x
+	var wave_dist: float = maxf(_wave_start_x - _cached_stone_wall_x, 100.0)
+	_wave_travel_speed = wave_dist / maxf(duration, 0.5)
+
+	# Başlangıç İtme Desteği (Kickoff Impulse):
+	# Hafif kavisli kısımlarda suyun başlangıçta takılmasını engellemek için havuzdaki ve sahildeki
+	# tüm suları hemen uyandırıp sola ve hafif yukarıya doğru güçlü bir darbeyle fırlat
+	var ps := PhysicsServer2D
+	for item in objects:
+		var obj: RID = item[0]
+		if not obj.is_valid() or _held_particles.has(obj):
+			continue
+		var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		if trans_var == null:
+			continue
+		var p_pos: Vector2 = (trans_var as Transform2D).origin
+		if p_pos.x >= (_cached_stone_wall_x - 30.0):
+			ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_SLEEPING, false)
+			var tier: int = item[2]
+			var mass_mult: float = 1.0 if tier == WaterTier.SMALL else (3.0 if tier == WaterTier.MEDIUM else 6.0)
+			var p_mass: float = particle_mass * mass_mult
+			# Güçlü başlangıç itmesi: sola doğru -170, yukarı doğru -45 (kavisli sahili rahatça tırmanması için)
+			ps.body_apply_central_impulse(obj, Vector2(-170.0 * p_mass, -45.0 * p_mass))
+
+	# Geçici dalga dolgunluk takviyesi (BACKWASH sırasında X > 1950'ye dönünce silinir)
+	var boost_count: int = mini(18 + _surge_cycle_level * 4, 50)
+	for b in range(boost_count):
+		if objects.size() >= max_particles:
+			break
+		var bx: float = randf_range(2040.0, 2240.0)
+		var by: float = randf_range(810.0, 890.0)
+		var bv: Vector2 = Vector2(randf_range(-140.0, -80.0), randf_range(-30.0, 10.0))
+		var tier: int = WaterTier.SMALL if randf() > 0.3 else WaterTier.MEDIUM
+		var obj_rid := create_object(Vector2(bx, by), bv, tier)
+		if obj_rid.is_valid():
+			_temp_boost_particles[obj_rid] = true
+
+	print("[FluidWater] Tsunami ROLLING_WAVE başladı! Seviye: %d/24 | X: %.1f -> %.1f | Hız: %.1f px/s | Takviye: +%d" % [_surge_cycle_level, _wave_front_x, _cached_stone_wall_x, _wave_travel_speed, boost_count])
+
+
+## Phase 3: IMPACT - Dalga duvara vurduğunda duvar seviyesi ve çarpma kontrolü
+func _on_wave_impact_wall(target_wave_crest_y: float) -> void:
+	_tsunami_phase = TsunamiPhase.IMPACT
+	_tsunami_phase_timer = 0.8
+	_impact_foam_timer = 1.0
+
+	var sw = get_tree().get_first_node_in_group("stone_wall")
+	var wall_top_y: float = 917.0
+	var wall_stage: int = 0
+	if sw and is_instance_valid(sw):
+		wall_top_y = sw.get_wall_top_y_world()
+		wall_stage = sw.current_stage if "current_stage" in sw else 0
+	else:
+		wall_top_y = 917.0
+
+	var wall_defended: bool = wall_top_y <= target_wave_crest_y
+
+	print("[FluidWater] ★ DALGA DUVARA ÇARPTI! Seviye: %d/24 | Duvar Top Y: %.1f | Dalga Crest Y: %.1f | Korundu: %s" % [wall_stage, wall_top_y, target_wave_crest_y, str(wall_defended)])
+
 	var ps := PhysicsServer2D
 	for item in objects:
 		var obj: RID = item[0]
 		if not obj.is_valid():
 			continue
-		var trans: Transform2D = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
-		if trans.origin.x >= min_x and trans.origin.x <= max_x:
-			ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_SLEEPING, false)
-			var tier: int = item[2]
-			var mass_mult: float = 1.0 if tier == WaterTier.SMALL else (3.0 if tier == WaterTier.MEDIUM else 6.0)
-			ps.body_apply_central_impulse(obj, direction.normalized() * force * mass_mult)
+		var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		if trans_var == null:
+			continue
+		var pos: Vector2 = (trans_var as Transform2D).origin
+		if absf(pos.x - _cached_stone_wall_x) < 55.0:
+			var v_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v: Vector2 = v_var if v_var != null else Vector2.ZERO
+			if wall_defended:
+				# Duvar yeterince yüksek: su duvardan yansır, zıplamaz, köpük oluşturur
+				v.x = absf(v.x) * 0.35 + 50.0
+				v.y = maxf(v.y, -20.0)
+				ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, v)
+			else:
+				# Duvar alçak: sadece duvarın üstündeki kısım sol tarafa (evlere doğru) akar
+				if pos.y < wall_top_y:
+					v.x = minf(v.x, -160.0)
+					ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, v)
+				else:
+					# Duvarın altında kalan kısım duvara çarpıp durur/yansır
+					v.x = absf(v.x) * 0.2 + 30.0
+					ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, v)
+
+
+## Phase 4: BACKWASH - Suların sağa doğal geri çekilmesi (3.0s)
+func start_tsunami_backwash(duration: float = 3.0) -> void:
+	_tsunami_phase = TsunamiPhase.BACKWASH
+	_tsunami_phase_timer = duration
+	_set_water_shader_param("tsunami_wave_front_uv", -1.0)
+	if _wave_curl_node:
+		_wave_curl_node.visible = false
+	print("[FluidWater] Tsunami BACKWASH başladı! Sular sağ havuza geri çekiliyor. Süre: %.1fs" % duration)
+
+
+## Backward compatibility aliases
+func start_controlled_surge(duration: float = 2.5, cycle_level: int = 1) -> void:
+	start_rolling_wave(duration, cycle_level)
+
+
+func start_tsunami_surge(duration: float = 2.5) -> void:
+	start_rolling_wave(duration, _surge_cycle_level)
+
+
+func apply_tsunami_surge(_direction: Vector2 = Vector2(-1.0, 0.0), _force: float = 0.0, _min_x: float = -INF, _max_x: float = INF) -> void:
+	start_rolling_wave(2.5, _surge_cycle_level)
+
+
+## Yağmur aşaması boyunca sağdaki genişletilmiş havuzda (X > 1920) suyun yavaş yavaş yükselip dev bir rezervuar oluşturmasını sağlar
+func start_rain_reservoir_fill(total_drops: int, duration: float = 8.0) -> void:
+	if duration <= 0.0 or total_drops <= 0:
+		return
+	_rain_reservoir_drops_to_spawn = total_drops
+	_rain_reservoir_spawn_interval = duration / float(total_drops)
+	_rain_reservoir_timer = 0.0
+	print("[FluidWater] Yağmur rezervuar dolumu başladı: %d damla, %.1f saniye boyunca X > 1920 havuzuna dolduruluyor." % [total_drops, duration])
+
+
+func start_water_accumulation(total_drops: int, duration: float = 4.0) -> void:
+	start_rain_reservoir_fill(total_drops, duration)
+
+
+func start_gradual_rain_collection(total_drops: int, duration: float = 4.0) -> void:
+	start_rain_reservoir_fill(total_drops, duration)
+
+
+## Tek Başına Kalan Suların Temizliği (Orphan Ball Cleaner):
+## Eğer sol tarafta (pos.x < wall_x) tek başına kalan bir SMALL su parçacığının
+## 70.0 piksel yarıçapında başka su parçacığı yoksa o parçacık hızlıca buharlaştırılır.
+func _clean_orphan_particles() -> void:
+	var wall_x := _get_wall_x()
+	var left_particles: Array[Dictionary] = []
+	var ps := PhysicsServer2D
+
+	for i in range(objects.size()):
+		var item: Array = objects[i]
+		var obj: RID = item[0]
+		var tier: int = item[2]
+		if tier != WaterTier.SMALL or not obj.is_valid() or _held_particles.has(obj):
+			continue
+		var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		if trans_var == null:
+			continue
+		var pos: Vector2 = (trans_var as Transform2D).origin
+		if pos.x < wall_x:
+			left_particles.append({
+				"idx": i,
+				"pos": pos,
+				"obj": obj,
+				"img": item[1]
+			})
+
+	if left_particles.is_empty():
+		return
+
+	var to_evaporate_indices: Array[int] = []
+	var count := left_particles.size()
+	var r_sq: float = 70.0 * 70.0
+
+	for a in range(count):
+		var p_a: Vector2 = left_particles[a]["pos"]
+		var has_neighbor: bool = false
+		for b in range(count):
+			if a == b:
+				continue
+			var p_b: Vector2 = left_particles[b]["pos"]
+			if p_a.distance_squared_to(p_b) <= r_sq:
+				has_neighbor = true
+				break
+		if not has_neighbor:
+			to_evaporate_indices.append(left_particles[a]["idx"])
+
+	if to_evaporate_indices.is_empty():
+		return
+
+	to_evaporate_indices.sort()
+	var rs := RenderingServer
+	for k in range(to_evaporate_indices.size() - 1, -1, -1):
+		var del_idx: int = to_evaporate_indices[k]
+		if del_idx < objects.size():
+			var item: Array = objects[del_idx]
+			var obj: RID = item[0]
+			var img: RID = item[1]
+			if _held_particles.has(obj):
+				_held_particles.erase(obj)
+			if _payload_released_particles.has(obj):
+				_payload_released_particles.erase(obj)
+			if obj.is_valid():
+				ps.free_rid(obj)
+			if img.is_valid():
+				rs.free_rid(img)
+			objects.remove_at(del_idx)
+
+
+func _setup_wave_curl_visual() -> void:
+	if _wave_curl_node or not _particle_container:
+		return
+	_wave_curl_node = Node2D.new()
+	_wave_curl_node.name = "TsunamiWaveCurl"
+	_wave_curl_node.visible = false
+	_particle_container.add_child(_wave_curl_node)
+
+	var offsets := [
+		Vector2(0.0, 0.0),
+		Vector2(-22.0, 8.0),
+		Vector2(-40.0, 24.0),
+		Vector2(-35.0, 44.0),
+		Vector2(26.0, 10.0),
+		Vector2(56.0, 26.0),
+		Vector2(88.0, 48.0)
+	]
+	var scales := [1.8, 1.6, 1.4, 1.2, 1.9, 2.2, 2.5]
+
+	for k in range(offsets.size()):
+		var sp := Sprite2D.new()
+		sp.texture = tex
+		if _particle_material:
+			sp.material = _particle_material
+		sp.position = offsets[k]
+		sp.scale = Vector2.ONE * scales[k] * 0.85
+		_wave_curl_node.add_child(sp)
+
+
+## Calms the water, cleans up spilled water that flooded into the city, and culls excess particles in the basin
+func calm_and_cleanup_post_surge(target_max_particles: int = 160) -> void:
+	_tsunami_phase = TsunamiPhase.IDLE
+	_set_water_shader_param("tsunami_wave_front_uv", -1.0)
+	_set_water_shader_param("tsunami_impact_foam", 0.0)
+	if _wave_curl_node:
+		_wave_curl_node.visible = false
+
+	var ps := PhysicsServer2D
+	var rs := RenderingServer
+
+	# 1. Calm remaining particles (damp velocities to settle water)
+	for item in objects:
+		var obj: RID = item[0]
+		if obj.is_valid():
+			var v_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			if v_var != null:
+				var v: Vector2 = v_var
+				ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, v * 0.2)
+
+	# 2. Identify water that breached into the city or overflowed past houses
+	var to_remove: Array[int] = []
+	for i in range(objects.size()):
+		var item: Array = objects[i]
+		var obj: RID = item[0]
+		if not obj.is_valid() or _held_particles.has(obj):
+			continue
+		var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		if trans_var == null:
+			continue
+		var pos: Vector2 = (trans_var as Transform2D).origin
+		if pos.x < 1180.0:
+			to_remove.append(i)
+
+	# 3. Clean up any remaining temporary boost particles
+	for i in range(objects.size()):
+		if to_remove.has(i):
+			continue
+		var obj: RID = objects[i][0]
+		if _temp_boost_particles.has(obj):
+			to_remove.append(i)
+	_temp_boost_particles.clear()
+
+	# 4. Cull excess calm particles in off-screen pool (X > 1950) down to target_max_particles
+	var remaining_count: int = objects.size() - to_remove.size()
+	if remaining_count > target_max_particles:
+		var excess: int = remaining_count - target_max_particles
+		for i in range(objects.size() - 1, -1, -1):
+			if excess <= 0:
+				break
+			if not to_remove.has(i) and not _held_particles.has(objects[i][0]):
+				var trans_var = ps.body_get_state(objects[i][0], PhysicsServer2D.BODY_STATE_TRANSFORM)
+				if trans_var != null:
+					var p_x: float = (trans_var as Transform2D).origin.x
+					if p_x > 1950.0:
+						to_remove.append(i)
+						excess -= 1
+
+	to_remove.sort()
+	for k in range(to_remove.size() - 1, -1, -1):
+		var del_idx: int = to_remove[k]
+		if del_idx < objects.size():
+			var item: Array = objects[del_idx]
+			var obj: RID = item[0]
+			var img: RID = item[1]
+			if obj.is_valid():
+				ps.free_rid(obj)
+			if img.is_valid():
+				rs.free_rid(img)
+			objects.remove_at(del_idx)
+
+	print("[FluidWater] Dalga sonrası sular sakinleştirildi ve temizlendi. Kalan parçacık: %d" % objects.size())
 
 
 ## Creates a circular impulse / wave burst at world position (e.g. impact, explosion, tsunami crest)
@@ -869,6 +1416,110 @@ func get_dense_water_surface_y(min_x: float, max_x: float, min_density: int = 4)
 	return y_coords[surface_idx]
 
 
+## Calculates the volumetric submersion ratio (0.0 to 1.0) of a given world Rect2 using a 3x3 grid.
+## Evaluates 9 sample points (Bottom, Middle, Top across Left, Center, Right columns).
+## Visual water coverage radii by tier:
+## - Tier 0 (Small): texSize * 0.65
+## - Tier 1 (Medium): texSize * 1.35
+## - Tier 2 (Large): texSize * 2.4
+## Top (roof) points only count if their respective column's bottom and middle points are also submerged,
+## ensuring stray splashes overhead do not contribute to submersion.
+func get_rect_submersion_ratio(target_rect: Rect2) -> float:
+	var norm_rect := target_rect.abs()
+	if norm_rect.size.x <= 0.0 or norm_rect.size.y <= 0.0 or objects.is_empty():
+		return 0.0
+
+	# 3 Columns in X: Left (20%), Center (50%), Right (80%)
+	var col_x: Array[float] = [
+		norm_rect.position.x + norm_rect.size.x * 0.20,
+		norm_rect.position.x + norm_rect.size.x * 0.50,
+		norm_rect.position.x + norm_rect.size.x * 0.80
+	]
+
+	# 3 Rows in Godot 2D (Y increases downwards):
+	# Top (Çatı): smaller Y
+	# Middle: center Y
+	# Bottom (Taban): larger Y
+	var y_top: float = norm_rect.position.y + norm_rect.size.y * 0.20
+	var y_mid: float = norm_rect.position.y + norm_rect.size.y * 0.50
+	var y_bot: float = norm_rect.position.y + norm_rect.size.y * 0.80
+
+	var bot_submerged: Array[bool] = [false, false, false]
+	var mid_submerged: Array[bool] = [false, false, false]
+	var top_submerged: Array[bool] = [false, false, false]
+	var remaining_points: int = 9
+
+	var ps := PhysicsServer2D
+	var max_water_r: float = texSize * 2.4
+	var aabb_min_x: float = norm_rect.position.x - max_water_r
+	var aabb_max_x: float = norm_rect.end.x + max_water_r
+	var aabb_min_y: float = norm_rect.position.y - max_water_r
+	var aabb_max_y: float = norm_rect.end.y + max_water_r
+
+	for item in objects:
+		if remaining_points <= 0:
+			break
+
+		var obj: RID = item[0]
+		if not obj.is_valid():
+			continue
+		# Ignore particles currently held in crane bucket
+		if _held_particles.has(obj):
+			continue
+
+		var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		if trans_var == null:
+			continue
+		var pos: Vector2 = (trans_var as Transform2D).origin
+
+		# Fast AABB reject
+		if pos.x < aabb_min_x or pos.x > aabb_max_x or pos.y < aabb_min_y or pos.y > aabb_max_y:
+			continue
+
+		var tier: int = item[2]
+		var water_r: float
+		match tier:
+			WaterTier.LARGE:
+				water_r = texSize * 2.4
+			WaterTier.MEDIUM:
+				water_r = texSize * 1.35
+			_: # WaterTier.SMALL
+				water_r = texSize * 0.65
+
+		var water_r_sq: float = water_r * water_r
+
+		for c in range(3):
+			var cx: float = col_x[c]
+
+			if not bot_submerged[c]:
+				if pos.distance_squared_to(Vector2(cx, y_bot)) <= water_r_sq:
+					bot_submerged[c] = true
+					remaining_points -= 1
+
+			if not mid_submerged[c]:
+				if pos.distance_squared_to(Vector2(cx, y_mid)) <= water_r_sq:
+					mid_submerged[c] = true
+					remaining_points -= 1
+
+			if not top_submerged[c]:
+				if pos.distance_squared_to(Vector2(cx, y_top)) <= water_r_sq:
+					top_submerged[c] = true
+					remaining_points -= 1
+
+	# Submersion calculation with bottom-up validation
+	# Top points only count if both bottom and middle in that column are submerged
+	var valid_points: int = 0
+	for c in range(3):
+		if bot_submerged[c]:
+			valid_points += 1
+			if mid_submerged[c]:
+				valid_points += 1
+				if top_submerged[c]:
+					valid_points += 1
+
+	return clampf(float(valid_points) / 9.0, 0.0, 1.0)
+
+
 ## Returns weighted volume of water particles currently inside the given world Rect2.
 ## Large sources contribute proportional volume (Tier 0: 1, Tier 1: 5, Tier 2: 16).
 func count_particles_in_rect(rect: Rect2) -> int:
@@ -960,3 +1611,60 @@ func fling_held_water(launch_vel: Vector2) -> void:
 			ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, launch_vel + spread)
 			ps.body_set_constant_force(obj, Vector2.ZERO)
 	_held_particles.clear()
+
+
+## Çift Koşullu Ev Yıkım Değerlendirmesi:
+## Koşul 1: Dev Tsunami Dalga Darbesi (Anında Yıkım):
+##   - Evin çevresinde en az 5 adet su parçacığı varsa VE ortalama yatay hız avg_vel.x < -140.0 px/s ise:
+##     is_massive_wave_impact = true döner ve ev tek seferde anında patlar.
+## Koşul 2: Baraj Gibi Su Birikmesi (Yavaş / Birikmeli Yıkım):
+##   - Güvenlik Eşiği: Evin etrafındaki toplam su parçacığı sayısı 7'den azsa ev ASLA yıkılamaz (dam_fill_ratio = 0.0).
+##   - Yalnızca en az 7 ve daha fazla parçacık üst üste yığılıp 3x3 ızgaranın %80'ini kapladığında dam_fill_ratio hesaplanır.
+func evaluate_house_hazard(house_rect: Rect2) -> Dictionary:
+	var result := {
+		"is_massive_wave_impact": false,
+		"dam_fill_ratio": 0.0,
+		"particle_count": 0,
+		"avg_vel": Vector2.ZERO
+	}
+	if objects.is_empty():
+		return result
+
+	var check_rect := house_rect.grow(35.0)
+	var nearby_count: int = 0
+	var sum_vel := Vector2.ZERO
+	var ps := PhysicsServer2D
+
+	for item in objects:
+		var obj: RID = item[0]
+		if not obj.is_valid() or _held_particles.has(obj):
+			continue
+		var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		if trans_var == null:
+			continue
+		var pos: Vector2 = (trans_var as Transform2D).origin
+		if check_rect.has_point(pos):
+			nearby_count += 1
+			var v_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v: Vector2 = v_var if v_var != null else Vector2.ZERO
+			sum_vel += v
+
+	result["particle_count"] = nearby_count
+	if nearby_count > 0:
+		result["avg_vel"] = sum_vel / float(nearby_count)
+
+	# Koşul 1 - Dev Tsunami Dalga Darbesi (Anında Yıkım):
+	# Duvarı aşan dalga cephesi yüksek hızla gelip evin çarpışma alanına çarptığında (>= 5 parçacık, avg_vel.x < -140.0 px/s)
+	if nearby_count >= 5 and result["avg_vel"].x < -140.0:
+		result["is_massive_wave_impact"] = true
+		return result
+
+	# Koşul 2 - Baraj Gibi Su Birikmesi (Yavaş / Birikmeli Yıkım):
+	# Güvenlik Eşiği: Evin etrafındaki toplam su parçacığı sayısı 7'den azsa ev ASLA yıkılamaz!
+	if nearby_count < 7:
+		result["dam_fill_ratio"] = 0.0
+		return result
+
+	# En az 7 ve daha fazla su parçacığı üst üste yığıldığında 3x3 ızgara doluluk oranını ölç
+	result["dam_fill_ratio"] = get_rect_submersion_ratio(house_rect)
+	return result

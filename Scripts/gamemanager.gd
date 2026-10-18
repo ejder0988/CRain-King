@@ -292,6 +292,7 @@ func _get_cheat_sheet_bbcode() -> String:
 		" [color=#ffe082][b][H][/b][/color]    Test: Ev Seviyesini Yükselt (+1 Kat)\n" +
 		" [color=#ffe082][b][J][/b][/color]    Test: Eve Hasar Ver (-1 Kat Kır)\n\n" +
 		"[b][color=#64b5f6]── SU FİZİĞİ & SİMÜLASYONU ──[/color][/b]\n" +
+		" [color=#ffe082][b][T][/b][/color]    Test: Sel / Taşkın Dalgasını Başlat\n" +
 		" [color=#ffe082][b][G][/b][/color]    Su Patlaması Ekle (150 Damla)\n" +
 		" [color=#ffe082][b][P][/b][/color]    Su Fare İmleci Etkileşimi (İtme/Çekme)\n\n" +
 		"[b][color=#b0bec5]── OYUN KONTROLLERİ ──[/color][/b]\n" +
@@ -441,6 +442,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			start_storm_sequence()
 
+		# Debug key: Press T to trigger the flood sequence immediately (only if debug_mode is enabled)
+		if debug_mode and event.keycode == KEY_T:
+			get_viewport().set_input_as_handled()
+			trigger_debug_flood()
+
 		# Debug key: Press F8 to spawn an Event Rock (only if debug_mode is enabled)
 		if debug_mode and event.keycode == KEY_F8:
 			get_viewport().set_input_as_handled()
@@ -450,6 +456,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		if debug_mode and event.keycode == KEY_F9:
 			get_viewport().set_input_as_handled()
 			add_money(50)
+
+
+## Debug F6 aktifken T tuşu ile sel döngüsünü / dalgasını test eder
+func trigger_debug_flood() -> void:
+	var tree := get_tree()
+	if not tree:
+		return
+	var game_ctrl = tree.get_first_node_in_group("game_controller")
+	if game_ctrl and game_ctrl.has_method("trigger_debug_flood"):
+		game_ctrl.trigger_debug_flood()
+		return
+	if tree.current_scene and tree.current_scene.has_method("trigger_debug_flood"):
+		tree.current_scene.trigger_debug_flood()
 
 
 func get_money() -> int:

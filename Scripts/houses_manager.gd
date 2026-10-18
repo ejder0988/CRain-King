@@ -123,6 +123,10 @@ func _physics_process(delta: float) -> void:
 			_managed_houses.remove_at(i)
 			continue
 
+		# House script'ine sahip evler kendi 3x3 submersion grid kontrolünü house.gd içinde bağımsız yürütür
+		if house is House:
+			continue
+
 		# Kırılma animasyonu oynarken veya yok edilirken yeni hasar almasın
 		if ("is_breaking" in house and house.is_breaking) or ("is_destroyed" in house and house.is_destroyed):
 			_submerged_timers[house] = 0.0
@@ -152,38 +156,25 @@ func _physics_process(delta: float) -> void:
 				_submerged_timers[house] = maxf(t - delta * 2.5, 0.0)
 
 
-## Evin collision kutusunun GERÇEKTEN su altında kalıp kalmadığını kontrol eder.
-## Tekil havaya sıçrayan damlalar evi yıkamaz; gerçek su kütlesinin collision'ı doldurması gerekir.
+## Evin collision kutusunun GERÇEKTEN su altında kalıp kalmadığını 3x3 submersion grid ile kontrol eder.
 func _check_house_collision_submerged(bounds: Dictionary) -> bool:
 	if not _cached_fluid_water or not is_instance_valid(_cached_fluid_water):
 		return false
 
-	# 1. Evin zemin temelinde su var mı kontrol et!
-	# Çatıya dökülen veya havadan geçen sular zemin seli yükselmeden evi yıkamaz.
-	var base_rect := Rect2(bounds.left, bounds.bottom - 16.0, bounds.width, 24.0)
-	var base_particles := _cached_fluid_water.count_particles_in_rect(base_rect)
-	if base_particles < 2:
-		return false
-
 	var col_rect := Rect2(bounds.left, bounds.top, bounds.width, bounds.height)
+	if _cached_fluid_water.has_method("get_rect_submersion_ratio"):
+		return _cached_fluid_water.get_rect_submersion_ratio(col_rect) >= 0.85
 
-	# 2. Collision kutusunun içindeki gerçek su parçacığı sayısını kontrol et
 	var particles_inside: int = _cached_fluid_water.count_particles_in_rect(col_rect)
-	if particles_inside < min_particles_in_collision:
-		return false
-
-	# 3. Yoğun su kütlesinin yüzeyini kontrol et (havada tek uçuşan damlaları filtreler)
-	var dense_water_y: float = _cached_fluid_water.get_dense_water_surface_y(bounds.left, bounds.right, 4)
-	if is_inf(dense_water_y):
-		return false
-
-	# Yoğun su seviyesi evin collision'ının üst kenarına (çatısına) ulaştı mı?
-	return dense_water_y <= bounds.top + 2.0
+	return particles_inside >= min_particles_in_collision
 
 
 func _start_house_destruction(house: StaticBody2D, bounds: Dictionary) -> void:
-	# 1. Eğer ev hasar alma metoduna sahipse multi-level hasar mekaniğini çağır
-	if house.has_method("take_damage"):
+	# 1. Eğer ev destroy_house veya take_damage metoduna sahipse hasar mekaniğini çağır
+	if house.has_method("destroy_house"):
+		house.destroy_house()
+		return
+	elif house.has_method("take_damage"):
 		var lvl = house.get("current_level")
 		print("Ev collision'ı su altında kaldı, hasar alıyor: ", house.name, " (Mevcut Seviye: ", lvl, ")")
 		house.take_damage()
@@ -292,6 +283,19 @@ func get_max_health() -> int:
 	return maxi(max_hp, 1)
 
 
+## Ayakta kalan ve yıkılmamış aktif evlerin sayısını döndürür
+func get_standing_houses_count() -> int:
+	var count: int = 0
+	for h in _managed_houses:
+		if is_instance_valid(h):
+			if "is_destroyed" in h and h.is_destroyed:
+				continue
+			if "current_level" in h and h.current_level <= 0:
+				continue
+			count += 1
+	return count
+
+
 ## Tüm evler yıkıldığında veya oyuncunun canı bittiğinde tetiklenir
 func _trigger_game_over() -> void:
 	if _is_game_over:
@@ -309,7 +313,7 @@ func _ensure_hud_layer() -> void:
 	if not _hud_layer or not is_instance_valid(_hud_layer):
 		_hud_layer = CanvasLayer.new()
 		_hud_layer.name = "HouseHealthHUD"
-		_hud_layer.layer = 10
+		_hud_layer.layer = 100
 		add_child(_hud_layer)
 
 
@@ -372,8 +376,9 @@ func _show_game_over_ui() -> void:
 	if _game_over_ui and is_instance_valid(_game_over_ui):
 		return
 
+	_ensure_hud_layer()
 	if not _hud_layer or not is_instance_valid(_hud_layer):
-		_create_health_hud()
+		return
 
 	var overlay := ColorRect.new()
 	overlay.name = "GameOverOverlay"

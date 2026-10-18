@@ -64,6 +64,12 @@ signal house_destroyed(house: Node2D)
 ## When true, the tutorial pointer bobs up and down; when false, it remains stationary
 @export var enable_pointer_movement: bool = false
 
+@export_group("Submersion / Flood Destruction")
+## Evin yıkılması için gereken minimum su yutulma oranı (0.80 = 3x3 ızgaranın %80'i su altında)
+@export var required_submersion_ratio: float = 0.80
+## Evin su altında kesintisiz kalması gereken süre (0.4 saniye)
+@export var submerge_hold_time: float = 0.4
+
 @onready var sprite: Sprite2D = get_node_or_null("Sprite2D")
 @onready var anim_sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
 @onready var collision_shape: CollisionShape2D = get_node_or_null("CollisionShape2D")
@@ -79,6 +85,8 @@ var _base_pointer_pos: Vector2 = Vector2.ZERO
 var is_breaking: bool = false
 var is_destroyed: bool = false
 var _level_label: Label = null
+var _current_submerge_time: float = 0.0
+var _cached_water: FluidWater = null
 
 
 func _get_sprite() -> Sprite2D:
@@ -148,6 +156,94 @@ func _process(_delta: float) -> void:
 		if s and s.texture and _base_sprite_height > 0.0:
 			height_diff = s.texture.get_size().y - _base_sprite_height
 		p.position.y = (_base_pointer_pos.y - height_diff) + sin(time * 5.0) * 2.0
+
+
+func _physics_process(delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
+	if is_destroyed or is_breaking:
+		_current_submerge_time = 0.0
+		return
+
+	var water := _find_fluid_water()
+	if not water:
+		_current_submerge_time = 0.0
+		return
+
+	var house_rect := _get_global_collision_rect()
+
+	# Çift Koşullu Yıkım Sistemi: 1. Dev Tsunami Dalgası Darbesi (Anında Yıkım) VEYA 2. Baraj Tipi Su Birikmesi (Yavaş / Birikmeli)
+	if water.has_method("evaluate_house_hazard"):
+		var hazard: Dictionary = water.evaluate_house_hazard(house_rect)
+
+		# Koşul 1 - Dev Tsunami Dalga Darbesi (Anında Yıkım):
+		# Duvarı aşan dalga cephesi yüksek hızla gelip evin çarpışma alanına çarptığında (>= 5 parçacık, avg_vel.x < -140.0)
+		if hazard.get("is_massive_wave_impact", false):
+			_current_submerge_time = 0.0
+			print("[House] %s dev tsunami dalga darbesiyle ANINDA yıkıldı! (Çarpan Parçacık: %d, Dalga Hızı: %.1f px/s)" % [name, hazard.get("particle_count", 0), hazard.get("avg_vel", Vector2.ZERO).x])
+			destroy_house()
+			return
+
+		# Koşul 2 - Baraj Gibi Su Birikmesi (Yavaş / Birikmeli Yıkım):
+		# Güvenlik Eşiği: Ev çevresindeki parçacık sayısı < 7 ise dam_fill_ratio daima 0.0'dır!
+		var fill_ratio: float = hazard.get("dam_fill_ratio", 0.0)
+		if fill_ratio >= required_submersion_ratio:
+			_current_submerge_time += delta
+			if _current_submerge_time >= submerge_hold_time:
+				_current_submerge_time = 0.0
+				print("[House] %s sular altında kalarak baraj tipi birikmeyle yıkıldı! (Doluluk Oranı: %.2f, Parçacık Sayısı: %d)" % [name, fill_ratio, hazard.get("particle_count", 0)])
+				destroy_house()
+		else:
+			# Su seviyesi çekildiğinde batma sayacını hızla sıfırla (tekil veya geçici temasları engeller)
+			_current_submerge_time = maxf(_current_submerge_time - delta * 3.0, 0.0)
+	else:
+		# Fallback: Klasik 3x3 submersion hesaplaması
+		var submersion_ratio: float = water.get_rect_submersion_ratio(house_rect)
+		if submersion_ratio >= required_submersion_ratio:
+			_current_submerge_time += delta
+			if _current_submerge_time >= submerge_hold_time:
+				_current_submerge_time = 0.0
+				destroy_house()
+		else:
+			_current_submerge_time = maxf(_current_submerge_time - delta * 3.0, 0.0)
+
+
+## Evin CollisionShape2D düğümünün dünya koordinatlarındaki Rect2 sınırlarını döndürür
+func _get_global_collision_rect() -> Rect2:
+	var col := _get_col_shape()
+	if col and col.shape is RectangleShape2D:
+		var rect_shape := col.shape as RectangleShape2D
+		var s: Vector2 = rect_shape.size * col.global_scale.abs()
+		var top_left: Vector2 = col.global_position - (s * 0.5)
+		return Rect2(top_left, s)
+
+	# Fallback: get_bounds()
+	var b := get_bounds()
+	return Rect2(b["left"], b["top"], b["width"], b["height"])
+
+
+## Public alias for _get_global_collision_rect
+func get_global_collision_rect() -> Rect2:
+	return _get_global_collision_rect()
+
+
+func _find_fluid_water() -> FluidWater:
+	if _cached_water and is_instance_valid(_cached_water):
+		return _cached_water
+	var tree := get_tree()
+	if not tree:
+		return null
+	var water = tree.get_first_node_in_group("fluid_water") as FluidWater
+	if water:
+		_cached_water = water
+		return _cached_water
+	var root := tree.current_scene
+	if root:
+		var node := root.get_node_or_null("FluidWater") as FluidWater
+		if node:
+			_cached_water = node
+			return _cached_water
+	return null
 
 
 func _cache_base_dimensions() -> void:
@@ -323,6 +419,17 @@ func take_damage() -> bool:
 ## Alias for take_damage
 func damage() -> bool:
 	return take_damage()
+
+
+## Evin su altında kaldığında veya hasarla patlamasını / yıkılmasını tetikler
+func destroy_house(force_total_collapse: bool = false) -> void:
+	if is_destroyed or is_breaking:
+		return
+	print("[House] ", name, " su altında kalarak yıkılıyor! (Mevcut Seviye: ", current_level, ")")
+	if force_total_collapse:
+		_collapse_level_1()
+	else:
+		take_damage()
 
 
 ## Seviye 2 ve üzeri için çatı katından başlayarak kırma

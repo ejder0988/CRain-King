@@ -27,7 +27,7 @@ enum MenuState {
 ## Path to the main game scene to launch when story completes
 @export_file("*.tscn") var game_scene_path: String = "res://Scenes/game.tscn"
 ## Duration of the smooth fade transition to the game scene
-@export var scene_fade_duration: float = 0.4
+@export var scene_fade_duration: float = 0.6
 
 @export_group("Entrance & Prompt Settings")
 ## Text displayed when entrance finishes
@@ -454,16 +454,22 @@ func _transition_to_game_scene() -> void:
 
 	print("[MainMenu] Hikaye tamamlandı! Oyun sahnesine geçiliyor: ", game_scene_path)
 
-	# Yumuşak kararma ile sahne geçişi
-	var fade := create_tween()
-	fade.tween_property(self, "modulate", Color(0, 0, 0, 1), scene_fade_duration)\
-		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	# 1. Hikaye kartını yumuşakça küçülterek merkeze çek (smooth shrink)
+	if story_icon:
+		var shrink := create_tween()
+		shrink.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		shrink.tween_property(story_icon, "scale", Vector2.ZERO, scene_fade_duration * 0.75)
 
-	# Main menu müziğini sahne geçişi sırasında yumuşakça kıs (fade out)
+	# 2. Main menu müziğini sahne geçişi sırasında yumuşakça kıs (fade out)
 	if fade_out_music_on_exit and _music_player and _music_player.playing:
 		var music_fade := create_tween()
 		music_fade.tween_property(_music_player, "volume_db", -80.0, scene_fade_duration)\
 			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+
+	# 3. Tüm ekranı yumuşak karart
+	var fade := create_tween()
+	fade.tween_property(self, "modulate", Color(0, 0, 0, 1), scene_fade_duration)\
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
 	fade.tween_callback(func():
 		if _music_player and is_instance_valid(_music_player):

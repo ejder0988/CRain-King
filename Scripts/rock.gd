@@ -8,9 +8,23 @@ class_name Rock
 @export var is_spawned_animated: bool = true
 @export var splash_sound: AudioStream = preload("res://Sounds/Rain/water_splash.mp3")
 
+@export_group("Impact & Pickup Audio")
+## Yere veya sert yüzeye düştüğü zaman çalan çarpma sesi
+@export var impact_sound: AudioStream = preload("res://Sounds/kaya_tuğla bütün etkileşimler.wav")
+## Çarpma sesi seviyesi (dB)
+@export var impact_volume_db: float = 0.0
+## Çarpma sesinin tetiklenmesi için minimum hız
+@export var min_impact_speed: float = 70.0
+## Yerden vinçle alındığı zaman çalan ses
+@export var pickup_sound: AudioStream = preload("res://Sounds/kaya_tuğla bütün etkileşimler.wav")
+## Alınma sesi seviyesi (dB)
+@export var pickup_volume_db: float = 0.0
+
 var _is_submerged: bool = false
 var _cached_fluid_water: Node = null
 var _audio_player: AudioStreamPlayer2D = null
+var _impact_audio_player: AudioStreamPlayer2D = null
+var _last_impact_time: float = -1.0
 
 
 func _ready() -> void:
@@ -20,6 +34,8 @@ func _ready() -> void:
 
 	contact_monitor = true
 	max_contacts_reported = 4
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
 
 	# Layer 2: Cargo layer (collides with ground Layer 1, but NOT water particles)
 	collision_layer = 2
@@ -36,6 +52,14 @@ func _ready() -> void:
 		_audio_player.bus = &"Master"
 		_audio_player.max_distance = 2500.0
 		add_child(_audio_player)
+
+	# Setup impact & pickup audio player
+	var sfx_bus: String = "SFX" if AudioServer.get_bus_index("SFX") != -1 else "Master"
+	_impact_audio_player = AudioStreamPlayer2D.new()
+	_impact_audio_player.name = "RockAudioPlayer"
+	_impact_audio_player.bus = sfx_bus
+	_impact_audio_player.max_distance = 2800.0
+	add_child(_impact_audio_player)
 
 	if is_spawned_animated:
 		_play_spawn_effect()
@@ -122,3 +146,41 @@ func _play_spawn_effect() -> void:
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_property(sprite, "scale", target_scale, 0.35)
+
+
+func _on_body_entered(body: Node) -> void:
+	var speed := linear_velocity.length()
+	if speed >= min_impact_speed:
+		play_impact_sound(speed)
+
+
+## Yere veya sert bir zemine düştüğünde çarpma sesi çalar
+func play_impact_sound(speed: float = 0.0) -> void:
+	if not _impact_audio_player:
+		return
+	var current_time := Time.get_ticks_msec() / 1000.0
+	if _last_impact_time > 0.0 and (current_time - _last_impact_time) < 0.12:
+		return
+	_last_impact_time = current_time
+
+	if impact_sound and _impact_audio_player.stream != impact_sound:
+		_impact_audio_player.stream = impact_sound
+
+	if _impact_audio_player.stream:
+		var spd := speed if speed > 0.0 else linear_velocity.length()
+		var vol_offset: float = clampf(remap(spd, min_impact_speed, 600.0, -10.0, 3.0), -12.0, 4.0)
+		_impact_audio_player.volume_db = impact_volume_db + vol_offset
+		_impact_audio_player.pitch_scale = randf_range(0.92, 1.08)
+		_impact_audio_player.play()
+
+
+## Yerden vinç tarafından yakalanıp kaldırıldığında çalar
+func play_pickup_sound() -> void:
+	if not _impact_audio_player:
+		return
+	if pickup_sound:
+		_impact_audio_player.stream = pickup_sound
+		_impact_audio_player.volume_db = pickup_volume_db
+		_impact_audio_player.pitch_scale = randf_range(0.96, 1.04)
+		_impact_audio_player.play()
+

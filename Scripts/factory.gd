@@ -58,6 +58,16 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 @export var upgrade_rock_spawn_position: Vector2 = Vector2(230, 800)
 ## Upgrade rock'ın havada süzülüp düşeceği (sekme başlangıç) hedef konumu
 @export var upgrade_rock_landing_position: Vector2 = Vector2(550, 890)
+
+@export_group("Factory Audio")
+## Fabrika üretim yaparken aralıksız çalan ses (Looping machine/production sound)
+@export var producing_loop_sound: AudioStream = null
+## Üretim sırasındaki ses seviyesi (dB)
+@export var producing_volume_db: float = -6.0
+## Üretim tamamlandığında tuğla/taş çıktığında çalan ses (Spit brick / finished sound)
+@export var produce_finished_sound: AudioStream = preload("res://Sounds/factory spit brick sounf effect.wav")
+## Üretim bitiş sesi seviyesi (dB)
+@export var produce_finished_volume_db: float = 0.0
 ## İlk fırlatmada yukarı doğru ivme / tepe yüksekliği
 @export var upgrade_rock_launch_height: float = 260.0
 ## Fırlatma arkının süresi (saniye)
@@ -87,6 +97,8 @@ var _original_sprite_pos: Vector2 = Vector2.ZERO
 var _original_label_pos: Vector2 = Vector2.ZERO
 var has_completed_first_rock_tutorial: bool = false
 var _base_pointer_y: float = -340.0
+var _producing_player: AudioStreamPlayer2D = null
+var _produce_finished_player: AudioStreamPlayer2D = null
 
 const LEVEL_REGIONS: Array[Rect2] = [
 	Rect2(22, 26, 57, 67),  # Level 1: Single smokestack
@@ -117,6 +129,7 @@ func _ready() -> void:
 	_init_level_sprites()
 	_apply_level_sprite()
 	_update_label_text()
+	_init_factory_audio()
 
 	var drop_zone := get_node_or_null("DropZone") as Area2D
 	if drop_zone and not drop_zone.body_entered.is_connected(_on_drop_zone_body_entered):
@@ -249,6 +262,7 @@ func start_production() -> void:
 
 	_start_production_tween()
 	_update_label_text()
+	_play_producing_sound()
 
 
 ## Rhythmic squash, stretch, and piston rumble simulating active manufacturing inside
@@ -274,6 +288,9 @@ func _start_production_tween() -> void:
 func _finish_production() -> void:
 	is_producing = false
 	production_timer = 0.0
+
+	_stop_producing_sound()
+	_play_produce_finished_sound()
 
 	# Stop production animation and restore default transforms
 	if _production_tween and _production_tween.is_valid():
@@ -611,3 +628,63 @@ func spawn_rock() -> RigidBody2D:
 
 func spawn_crate() -> RigidBody2D:
 	return spawn_rock()
+
+
+# ==============================================================================
+# FACTORY AUDIO SYSTEM
+# ==============================================================================
+func _init_factory_audio() -> void:
+	var sfx_bus: String = "SFX" if AudioServer.get_bus_index("SFX") != -1 else "Master"
+
+	# 1. Üretim devam ederkenki döngü sesi oynatıcı (Looping AudioStreamPlayer2D)
+	if not _producing_player:
+		_producing_player = AudioStreamPlayer2D.new()
+		_producing_player.name = "ProducingAudioPlayer"
+		_producing_player.bus = sfx_bus
+		_producing_player.volume_db = producing_volume_db
+		_producing_player.max_distance = 2500.0
+		_producing_player.attenuation = 1.0
+		add_child(_producing_player)
+
+	# 2. Üretim tamamlandığında fırlatma/bitiş sesi oynatıcı (AudioStreamPlayer2D)
+	if not _produce_finished_player:
+		_produce_finished_player = AudioStreamPlayer2D.new()
+		_produce_finished_player.name = "ProduceFinishedAudioPlayer"
+		_produce_finished_player.bus = sfx_bus
+		_produce_finished_player.volume_db = produce_finished_volume_db
+		_produce_finished_player.max_distance = 3000.0
+		_produce_finished_player.attenuation = 1.0
+		add_child(_produce_finished_player)
+
+	if produce_finished_sound and _produce_finished_player:
+		_produce_finished_player.stream = produce_finished_sound
+
+
+func _play_producing_sound() -> void:
+	if not _producing_player:
+		return
+	if producing_loop_sound:
+		_producing_player.stream = producing_loop_sound
+		_producing_player.volume_db = producing_volume_db
+		# WAV veya MP3 loop ayarı desteği
+		if producing_loop_sound is AudioStreamWAV:
+			var wav := producing_loop_sound as AudioStreamWAV
+			if wav.loop_mode == AudioStreamWAV.LOOP_DISABLED:
+				wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		_producing_player.play()
+
+
+func _stop_producing_sound() -> void:
+	if _producing_player and _producing_player.playing:
+		_producing_player.stop()
+
+
+func _play_produce_finished_sound() -> void:
+	if not _produce_finished_player:
+		return
+	if produce_finished_sound and _produce_finished_player.stream != produce_finished_sound:
+		_produce_finished_player.stream = produce_finished_sound
+	if _produce_finished_player.stream:
+		_produce_finished_player.volume_db = produce_finished_volume_db
+		_produce_finished_player.pitch_scale = randf_range(0.95, 1.05)
+		_produce_finished_player.play()

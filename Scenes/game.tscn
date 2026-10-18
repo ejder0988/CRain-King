@@ -35,6 +35,10 @@
 [ext_resource type="Script" uid="uid://behgarnuu1y13" path="res://Scripts/house.gd" id="31_oeip8"]
 [ext_resource type="Texture2D" uid="uid://c6af0t7qes87f" path="res://Sprites/DestroyHouse.png" id="32_ese38"]
 [ext_resource type="PackedScene" uid="uid://d4nxhpxadq7aw" path="res://Scenes/rock_pit.tscn" id="36_rockpit"]
+[ext_resource type="AudioStream" uid="uid://c7shauu6tgon3" path="res://Sounds/WallBuild.wav" id="36_ym3tv"]
+[ext_resource type="AudioStream" uid="uid://bx33i2jxr3uv1" path="res://Sounds/Gülme1.wav" id="37_bwj6o"]
+[ext_resource type="AudioStream" uid="uid://c5im18dijqqwp" path="res://Sounds/Gülme2.wav" id="38_f3c8l"]
+[ext_resource type="AudioStream" uid="uid://d2bkhk46h1wdo" path="res://Sounds/Gülme3.wav" id="39_bu0y5"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_oeip8"]
 atlas = ExtResource("17_ewbju")
@@ -91,7 +95,7 @@ region = Rect2(101, 14, 22, 50)
 atlas = ExtResource("25_22asu")
 region = Rect2(133, 3, 22, 61)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_d3cha"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ym3tv"]
 size = Vector2(17.617035, 10.97876)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_8lpvs"]
@@ -137,10 +141,10 @@ animations = [{
 "speed": 10.0
 }]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_i26dy"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_bwj6o"]
 size = Vector2(17.617035, 10.97876)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_lmoi6"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_f3c8l"]
 size = Vector2(17.617035, 10.97876)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_mucmn"]
@@ -327,18 +331,18 @@ b = Vector2(49.0213, 3.574463)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_nnt18"]
 a = Vector2(34.21277, 20.936172)
-b = Vector2(57.95746, 25.021286)
+b = Vector2(57.446808, 30.893616)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_ewbju"]
-a = Vector2(68.93619, 20.680847)
-b = Vector2(90.382965, 32.17021)
+a = Vector2(67.91489, 26.297882)
+b = Vector2(89.361694, 33.446808)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_85qyi"]
-a = Vector2(79.91489, 36.510635)
+a = Vector2(79.148926, 37.78723)
 b = Vector2(93.70212, 41.361694)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_iivbl"]
-a = Vector2(507.57446, 86.80852)
+a = Vector2(537.95746, 87.31915)
 b = Vector2(477.19153, 85.531906)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_oeip8"]
@@ -346,8 +350,8 @@ a = Vector2(-29.1064, 9.957428)
 b = Vector2(-88.34041, -42.63829)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_7nbq1"]
-a = Vector2(502.7234, 86.29787)
-b = Vector2(503.23407, -27.063843)
+a = Vector2(500.68082, 79.91487)
+b = Vector2(583.65955, -36.765976)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ifeo7"]
 atlas = ExtResource("13_oeip8")
@@ -733,6 +737,8 @@ collision_layer = 0
 collision_mask = 0
 script = ExtResource("31_oeip8")
 level_sprites = Array[Texture2D]([SubResource("AtlasTexture_j0obb"), SubResource("AtlasTexture_fh6x0"), SubResource("AtlasTexture_kcoun"), SubResource("AtlasTexture_jegl3"), SubResource("AtlasTexture_l4kai")])
+required_submersion_ratio = 0.85
+submerge_hold_time = 0.3
 
 [node name="PointerSprite2D" type="Sprite2D" parent="Houses/House1" unique_id=1204275331]
 visible = false
@@ -742,7 +748,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House1" unique_id=819943257]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_d3cha")
+shape = SubResource("RectangleShape2D_ym3tv")
 disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House1" unique_id=1111773724]
@@ -761,6 +767,8 @@ collision_layer = 0
 collision_mask = 0
 script = ExtResource("31_oeip8")
 level_sprites = Array[Texture2D]([SubResource("AtlasTexture_j0obb"), SubResource("AtlasTexture_fh6x0"), SubResource("AtlasTexture_kcoun"), SubResource("AtlasTexture_jegl3"), SubResource("AtlasTexture_l4kai")])
+required_submersion_ratio = 0.85
+submerge_hold_time = 0.3
 
 [node name="PointerSprite2D" type="Sprite2D" parent="Houses/House2" unique_id=2066932845]
 visible = false
@@ -770,7 +778,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House2" unique_id=528198923]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_i26dy")
+shape = SubResource("RectangleShape2D_bwj6o")
 disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House2" unique_id=908321631]
@@ -788,7 +796,10 @@ position = Vector2(-177.1915, 10.212766)
 collision_layer = 0
 collision_mask = 0
 script = ExtResource("31_oeip8")
+flip_x = true
 level_sprites = Array[Texture2D]([SubResource("AtlasTexture_j0obb"), SubResource("AtlasTexture_fh6x0"), SubResource("AtlasTexture_kcoun"), SubResource("AtlasTexture_jegl3"), SubResource("AtlasTexture_l4kai")])
+required_submersion_ratio = 0.85
+submerge_hold_time = 0.3
 
 [node name="PointerSprite2D" type="Sprite2D" parent="Houses/House3" unique_id=1081122553]
 visible = false
@@ -798,11 +809,12 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House3" unique_id=625670738]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_lmoi6")
+shape = SubResource("RectangleShape2D_f3c8l")
 disabled = true
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House3" unique_id=1131892629]
 texture = SubResource("AtlasTexture_j0obb")
+flip_h = true
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Houses/House3" unique_id=376869706]
 visible = false
@@ -810,6 +822,7 @@ sprite_frames = SubResource("SpriteFrames_3gngh")
 animation = &"destroy"
 frame = 4
 frame_progress = 1.0
+flip_h = true
 
 [node name="RockPit" parent="." unique_id=1849929292 instance=ExtResource("36_rockpit")]
 position = Vector2(1240, 845)
@@ -958,11 +971,11 @@ position = Vector2(-247.65958, -28.595762)
 shape = SubResource("SegmentShape2D_iivbl")
 
 [node name="CollisionShape2D7" type="CollisionShape2D" parent="GroundCollions" unique_id=2132755017]
-position = Vector2(-245.87236, -26.553192)
+position = Vector2(-211.65955, -26.553192)
 shape = SubResource("SegmentShape2D_7nbq1")
 
 [node name="CollisionShape2D29" type="CollisionShape2D" parent="GroundCollions" unique_id=1992042784]
-position = Vector2(-243.06381, -26.553192)
+position = Vector2(-208.85107, -26.553192)
 shape = SubResource("SegmentShape2D_7nbq1")
 
 [node name="Buttons" type="Node2D" parent="." unique_id=1082094317]
@@ -1147,10 +1160,12 @@ streak_count = 6
 speck_count = 10
 
 [node name="FluidWater" parent="." unique_id=1526576869 instance=ExtResource("18_fluidwater")]
-position = Vector2(1845, 694)
-initial_drops = 25
+position = Vector2(2295, 527)
+initial_drops = 50
 
 [node name="StoneWall" parent="." unique_id=1987654321 instance=ExtResource("27_stonewall")]
-position = Vector2(1540, 773)
+position = Vector2(1536, 792)
 scale = Vector2(2, 2)
 current_stage = 1
+wall_build_sound = ExtResource("36_ym3tv")
+laugh_sounds = Array[AudioStream]([ExtResource("37_bwj6o"), ExtResource("38_f3c8l"), ExtResource("39_bu0y5")])

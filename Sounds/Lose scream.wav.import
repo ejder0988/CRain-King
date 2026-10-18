@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://bpky5s2yuyat2"
+path="res://.godot/imported/Lose scream.wav-2efa99be05551341e47f04798e16f43d.sample"
+
+[deps]
+
+source_file="res://Sounds/Lose scream.wav"
+dest_files=["res://.godot/imported/Lose scream.wav-2efa99be05551341e47f04798e16f43d.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2

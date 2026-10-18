@@ -42,6 +42,16 @@ signal first_bounce()
 ## Süre tükenirken uyarı rengi
 @export var warning_color: Color = Color(1.0, 0.35, 0.2, 1.0)
 
+@export_group("Impact & Pickup Audio")
+## Yere çarptığı / sektiği zaman çalan ses
+@export var impact_sound: AudioStream = preload("res://Sounds/kaya_tuğla bütün etkileşimler.wav")
+## Çarpma sesi seviyesi (dB)
+@export var impact_volume_db: float = -2.0
+## Vinç tarafından yakalandığı zaman çalan ses
+@export var pickup_sound: AudioStream = preload("res://Sounds/kaya_tuğla bütün etkileşimler.wav")
+## Yakalanma sesi seviyesi (dB)
+@export var pickup_volume_db: float = 0.0
+
 var time_remaining: float = 6.0
 var lifetime: float = 6.0
 var is_consumed: bool = false
@@ -58,6 +68,7 @@ var _pulse_tween: Tween = null
 var _original_sprite_scale: Vector2 = Vector2.ONE
 var _flash_timer: float = 0.0
 var _last_bounce_time: float = 0.0
+var _impact_audio_player: AudioStreamPlayer2D = null
 
 @onready var sprite: Sprite2D = get_node_or_null("Sprite2D")
 @onready var collision_shape: CollisionShape2D = get_node_or_null("CollisionShape2D")
@@ -71,6 +82,13 @@ func _ready() -> void:
 	add_to_group("grabbable")
 	set_meta("is_event_rock", true)
 	set_meta("is_upgrade_rock", true)
+
+	var sfx_bus: String = "SFX" if AudioServer.get_bus_index("SFX") != -1 else "Master"
+	_impact_audio_player = AudioStreamPlayer2D.new()
+	_impact_audio_player.name = "UpgradeRockAudioPlayer"
+	_impact_audio_player.bus = sfx_bus
+	_impact_audio_player.max_distance = 2800.0
+	add_child(_impact_audio_player)
 
 	time_remaining = randf_range(lifetime_min, lifetime_max)
 	lifetime = time_remaining
@@ -238,6 +256,7 @@ func _on_body_entered(body: Node) -> void:
 
 
 func _play_bounce_juice() -> void:
+	play_impact_sound()
 	if not sprite:
 		return
 	var tw := create_tween()
@@ -245,6 +264,30 @@ func _play_bounce_juice() -> void:
 	tw.tween_property(sprite, "scale", Vector2(_original_sprite_scale.x * 1.35, _original_sprite_scale.y * 0.65), 0.06)
 	tw.tween_property(sprite, "scale", Vector2(_original_sprite_scale.x * 0.85, _original_sprite_scale.y * 1.3), 0.10)
 	tw.tween_property(sprite, "scale", _original_sprite_scale, 0.12)
+
+
+## Yere veya duvara çarptığında çalar
+func play_impact_sound() -> void:
+	if not _impact_audio_player:
+		return
+	if impact_sound and _impact_audio_player.stream != impact_sound:
+		_impact_audio_player.stream = impact_sound
+	if _impact_audio_player.stream:
+		_impact_audio_player.volume_db = impact_volume_db
+		_impact_audio_player.pitch_scale = randf_range(0.95, 1.1)
+		_impact_audio_player.play()
+
+
+## Vinç tarafından yakalandığında çalar
+func play_pickup_sound() -> void:
+	if not _impact_audio_player:
+		return
+	if pickup_sound:
+		_impact_audio_player.stream = pickup_sound
+		_impact_audio_player.volume_db = pickup_volume_db
+		_impact_audio_player.pitch_scale = randf_range(0.96, 1.04)
+		_impact_audio_player.play()
+
 
 
 func _draw() -> void:

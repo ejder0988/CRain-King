@@ -27,6 +27,11 @@ uniform float foam_transparency : hint_range(0.0, 1.0, 0.05) = 0.90;
 uniform float foam_flow_offset = 0.0;
 uniform float water_agitation = 0.0;
 
+group_uniforms Tsunami_Wave_FX;
+uniform float tsunami_wave_front_uv = -1.0;
+uniform float tsunami_crest_uv_y = 0.5;
+uniform float tsunami_impact_foam = 0.0;
+
 group_uniforms Caustics_And_Lighting;
 uniform float caustic_strength : hint_range(0.0, 0.4, 0.01) = 0.12;
 uniform float caustic_scale : hint_range(40.0, 350.0, 10.0) = 160.0;
@@ -198,6 +203,17 @@ void fragment() {
 			base_water = mix(deep_water_color, abyss_water_color, (depth_factor - 0.5) * 2.0);
 		}
 
+		// Tsunami wave front lower body: deepen ocean color
+		if (tsunami_wave_front_uv > 0.0) {
+			float d_front = abs(SCREEN_UV.x - tsunami_wave_front_uv);
+			if (d_front < 0.08) {
+				float front_f = 1.0 - (d_front / 0.08);
+				if (SCREEN_UV.y > tsunami_crest_uv_y + 0.02) {
+					base_water = mix(base_water, deep_water_color, front_f * 0.7);
+				}
+			}
+		}
+
 		// Crisp shimmering caustics (fine sunlight web)
 		float caustic = get_ocean_caustic(SCREEN_UV, TIME) * caustic_strength * (1.0 - depth_factor * 0.55);
 
@@ -236,6 +252,17 @@ void fragment() {
 				prev_d = sample_d;
 			}
 
+			// Tsunami wave crest and curling lip foam boost
+			if (tsunami_wave_front_uv > 0.0) {
+				float d_front = abs(SCREEN_UV.x - tsunami_wave_front_uv);
+				if (d_front < 0.075) {
+					float front_f = 1.0 - (d_front / 0.075);
+					if (SCREEN_UV.y <= tsunami_crest_uv_y + 0.045) {
+						top_foam_gradient = max(top_foam_gradient, front_f * 0.94);
+					}
+				}
+			}
+
 			// Rim gradient for splashes, droplets, and side boundaries
 			float rim_gradient = clamp(1.0 - (density - effective_threshold) / 0.12, 0.0, 1.0) * 0.45;
 			float foam_gradient = max(top_foam_gradient, rim_gradient);
@@ -249,6 +276,10 @@ void fragment() {
 			float near_wall = abs(wall_grad);
 
 			foam_gradient = clamp(foam_gradient + near_wall * 0.18, 0.0, 1.0);
+
+			if (tsunami_impact_foam > 0.0) {
+				foam_gradient = clamp(foam_gradient + near_wall * tsunami_impact_foam * 0.65, 0.0, 1.0);
+			}
 
 			if (foam_gradient > 0.001) {
 				// Screen aspect ratio correction so foam bubbles are uniformly round

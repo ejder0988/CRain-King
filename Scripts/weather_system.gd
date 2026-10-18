@@ -95,6 +95,7 @@ var _rain_transition_tween: Tween
 
 
 func _ready() -> void:
+	add_to_group("weather_system")
 	# Ensure proper layer ordering (rendered over world)
 	layer = 10
 	visible = true
@@ -296,6 +297,35 @@ func start_sweeping_rain(type: WeatherType = WeatherType.DOWNPOUR, sweep_duratio
 	_sweep_tween = create_tween()
 	if mat:
 		_sweep_tween.tween_property(mat, "shader_parameter/right_to_left_progress", 1.0, sweep_duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
+## Flood Cycle 1st Rain: Y tuşu sekansındaki gibi ekranın sağından (bir kısmından)
+## yavaşça giren, sola doğru süpüren ve gecikmeli sesle başlayan Downpour yağmuru
+func start_flood_first_rain(duration: float = 8.0, audio_delay: float = -1.0) -> void:
+	var delay: float = audio_delay if audio_delay >= 0.0 else rain_audio_start_delay
+	start_sweeping_rain(WeatherType.DOWNPOUR, duration, delay)
+	print("[WeatherSystem] 1. Yağmur (Downpour) Y tuşu sekansındaki gibi sağdan (ekranın bir kısmından) süpürerek başladı. Süre: %.1fs | Ses Gecikmesi: %.1fs" % [duration, delay])
+
+
+## Flood Cycle 2nd Rain: Transitions smoothly into Night Storm (3.0s)
+func start_flood_second_rain(transition_time: float = 3.0) -> void:
+	lightning_enabled = true
+	set_weather(WeatherType.NIGHT_STORM, transition_time)
+	print("[WeatherSystem] 2. Yağmur (Night Storm) başladı. Geçiş süresi: %.1fs" % transition_time)
+
+
+## Flood Cycle: Starts downpour entering from right edge (over the water pool) for the flood accumulation duration
+func start_flood_downpour(duration: float = 4.0) -> void:
+	start_sweeping_rain(WeatherType.DOWNPOUR, duration, 0.0)
+	print("[WeatherSystem] Sel yağmuru (Downpour) sağ havuzdan batıya doğru başladı. Süre: %.1fs" % duration)
+
+
+## Flood Cycle: Transitions immediately into dramatic Night Storm with lightning strike as the tsunami wave strikes
+func trigger_flood_tsunami_storm() -> void:
+	lightning_enabled = true
+	set_weather(WeatherType.NIGHT_STORM, 0.8)
+	strike()
+	print("[WeatherSystem] Tsunami vuruşu! Night Storm ve şimşek çakması devreye girdi!")
 
 
 ## Runs the complete storm lifecycle:
