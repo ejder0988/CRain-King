@@ -17,6 +17,7 @@
 [ext_resource type="PackedScene" uid="uid://ds7wan56d10w4" path="res://Scenes/weather_system.tscn" id="11_weather"]
 [ext_resource type="Texture2D" uid="uid://cy3j8tdfsjg1e" path="res://Sprites/Crane/Arrow.png" id="12_1phco"]
 [ext_resource type="Texture2D" uid="uid://clssaaosbshyx" path="res://Sprites/Buttons.png" id="13_oeip8"]
+[ext_resource type="Script" uid="uid://8pp5jjyfaa7p" path="res://Scripts/buttons.gd" id="15_mucmn"]
 [ext_resource type="Shader" uid="uid://b2eeoxbloehs3" path="res://Shaders/cloud.gdshader" id="15_nb51f"]
 [ext_resource type="Texture2D" uid="uid://bnli5t31822de" path="res://Sprites/Background/factory.png" id="17_ewbju"]
 [ext_resource type="PackedScene" uid="uid://dtcg1cfq3571p" path="res://Scenes/fluid_water.tscn" id="18_fluidwater"]
@@ -343,6 +344,34 @@ b = Vector2(-88.34041, -42.63829)
 a = Vector2(502.7234, 86.29787)
 b = Vector2(503.23407, -27.063843)
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_ifeo7"]
+atlas = ExtResource("13_oeip8")
+region = Rect2(39, 70, 18, 19)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_qj5kr"]
+atlas = ExtResource("13_oeip8")
+region = Rect2(51, 115, 11, 12)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_d5jaa"]
+atlas = ExtResource("13_oeip8")
+region = Rect2(19, 115, 11, 12)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7sqp1"]
+atlas = ExtResource("13_oeip8")
+region = Rect2(33, 8, 30, 19)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_gsm33"]
+atlas = ExtResource("13_oeip8")
+region = Rect2(98, 8, 28, 19)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lrctp"]
+atlas = ExtResource("13_oeip8")
+region = Rect2(103, 38, 18, 19)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_q8b24"]
+atlas = ExtResource("13_oeip8")
+region = Rect2(103, 70, 18, 19)
+
 [sub_resource type="AtlasTexture" id="AtlasTexture_yf5fn"]
 atlas = ExtResource("13_oeip8")
 region = Rect2(7, 35, 18, 22)
@@ -358,6 +387,41 @@ region = Rect2(1, 5, 30, 22)
 [sub_resource type="AtlasTexture" id="AtlasTexture_p3b6d"]
 atlas = ExtResource("13_oeip8")
 region = Rect2(1, 96, 46, 14)
+
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_8m3t6"]
+load_path = "res://.godot/imported/Buttons.png-f11c095f51e508b771de2ddf5043c23c.ctex"
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_bchkn"]
+atlas = SubResource("CompressedTexture2D_8m3t6")
+region = Rect2(66, 5, 28, 22)
+
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_mucmn"]
+load_path = "res://.godot/imported/Buttons.png-f11c095f51e508b771de2ddf5043c23c.ctex"
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ff75x"]
+atlas = SubResource("CompressedTexture2D_mucmn")
+region = Rect2(71, 35, 18, 22)
+
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_ese38"]
+load_path = "res://.godot/imported/Buttons.png-f11c095f51e508b771de2ddf5043c23c.ctex"
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_a2m5q"]
+atlas = SubResource("CompressedTexture2D_ese38")
+region = Rect2(35, 113, 11, 14)
+
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_oeip8"]
+load_path = "res://.godot/imported/Buttons.png-f11c095f51e508b771de2ddf5043c23c.ctex"
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lknxd"]
+atlas = SubResource("CompressedTexture2D_oeip8")
+region = Rect2(71, 67, 18, 22)
+
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_xe308"]
+load_path = "res://.godot/imported/Buttons.png-f11c095f51e508b771de2ddf5043c23c.ctex"
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ckj55"]
+atlas = SubResource("CompressedTexture2D_xe308")
+region = Rect2(3, 113, 11, 14)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_base"]
 size = Vector2(160, 40)
@@ -624,6 +688,11 @@ scale = Vector2(0.23293903, 0.23357663)
 script = ExtResource("5_tgy6u")
 level_sprites = Array[Texture2D]([SubResource("AtlasTexture_oeip8"), SubResource("AtlasTexture_nfavm"), SubResource("AtlasTexture_jcn4n"), SubResource("AtlasTexture_csv17"), SubResource("AtlasTexture_6i05k")])
 
+[node name="PointerSprite2D" type="Sprite2D" parent="Background/LandLayer2/factory" unique_id=2104999123]
+position = Vector2(7.441224, -354)
+scale = Vector2(21.250195, 12.0625)
+texture = ExtResource("11_d3cha")
+
 [node name="Sprite2D" type="Sprite2D" parent="Background/LandLayer2/factory" unique_id=452277058]
 position = Vector2(16.000002, -112.99997)
 scale = Vector2(5.7730265, 5.773027)
@@ -639,12 +708,6 @@ collision_mask = 3
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Background/LandLayer2/factory/DropZone" unique_id=1499283747]
 position = Vector2(16, -113)
 shape = SubResource("RectangleShape2D_factory_drop")
-
-[node name="PointerSprite2D" type="Sprite2D" parent="Background/LandLayer2/factory" unique_id=2104999123]
-visible = false
-position = Vector2(16, -340)
-scale = Vector2(10, 7.5)
-texture = ExtResource("11_d3cha")
 
 [node name="Houses" type="Node2D" parent="." unique_id=1190244747]
 position = Vector2(1496, 822)
@@ -890,6 +953,14 @@ position = Vector2(-243.06381, -26.553192)
 shape = SubResource("SegmentShape2D_7nbq1")
 
 [node name="Buttons" type="Node2D" parent="." unique_id=1082094317]
+script = ExtResource("15_mucmn")
+e_pressed_texture = SubResource("AtlasTexture_ifeo7")
+a_pressed_texture = SubResource("AtlasTexture_qj5kr")
+d_pressed_texture = SubResource("AtlasTexture_d5jaa")
+shift_pressed_texture = SubResource("AtlasTexture_7sqp1")
+esc_pressed_texture = SubResource("AtlasTexture_gsm33")
+sound_pressed_texture = SubResource("AtlasTexture_lrctp")
+music_pressed_texture = SubResource("AtlasTexture_q8b24")
 
 [node name="Q" type="Sprite2D" parent="Buttons" unique_id=1030377915]
 position = Vector2(896, 178)
@@ -902,7 +973,7 @@ scale = Vector2(3.5, 3.5)
 texture = SubResource("AtlasTexture_1kfie")
 
 [node name="Shift" type="Sprite2D" parent="Buttons" unique_id=787530517]
-position = Vector2(277.00018, 598)
+position = Vector2(431, 648)
 scale = Vector2(3.5, 3.5)
 texture = SubResource("AtlasTexture_gyste")
 
@@ -910,6 +981,31 @@ texture = SubResource("AtlasTexture_gyste")
 position = Vector2(960, 996)
 scale = Vector2(3.5, 3.5)
 texture = SubResource("AtlasTexture_p3b6d")
+
+[node name="Esc" type="Sprite2D" parent="Buttons" unique_id=246567254]
+position = Vector2(68.00006, 38.000015)
+scale = Vector2(3.5, 3.5)
+texture = SubResource("AtlasTexture_bchkn")
+
+[node name="Sound" type="Sprite2D" parent="Buttons" unique_id=267004359]
+position = Vector2(176.00006, 38.000015)
+scale = Vector2(3.5, 3.5)
+texture = SubResource("AtlasTexture_ff75x")
+
+[node name="SoundKeyA" type="Sprite2D" parent="Buttons" unique_id=2068710358]
+position = Vector2(164, 75)
+scale = Vector2(3.5, 3.5)
+texture = SubResource("AtlasTexture_a2m5q")
+
+[node name="Music" type="Sprite2D" parent="Buttons" unique_id=286802724]
+position = Vector2(247.00006, 38.000015)
+scale = Vector2(3.5, 3.5)
+texture = SubResource("AtlasTexture_lknxd")
+
+[node name="MusicKeyD" type="Sprite2D" parent="Buttons" unique_id=392856598]
+position = Vector2(235.00002, 75)
+scale = Vector2(3.5, 3.5)
+texture = SubResource("AtlasTexture_ckj55")
 
 [node name="Crane" type="CharacterBody2D" parent="." unique_id=1565022501 node_paths=PackedStringArray("shake_sprite_1", "shake_sprite_2", "shake_sprite_3")]
 position = Vector2(991, 1016)
@@ -948,16 +1044,22 @@ trolley_speed_tier2 = null
 rope_winch_speed_tier2 = null
 fling_multiplier_tier1 = null
 fling_multiplier_tier2 = null
+event_boost_duration = null
 enable_arrow_bob = null
 arrow_bob_amplitude = null
 arrow_bob_speed = null
 enable_arrow_stretch = null
+enable_aim_cursor = null
+toggle_aim_cursor_key = null
 enable_trajectory_dots = null
 enable_target_lockon = null
 aim_color_normal = null
 aim_color_locked = null
 aim_color_cargo = null
 cargo_carry_offset_y = null
+payload_catch_volume_db = null
+crane_turn_volume_db = null
+trolley_move_volume_db = null
 enable_water_interaction = null
 water_splash_audio = ExtResource("10_8m3t6")
 water_splash_volume_db = null
@@ -1066,13 +1168,32 @@ offset_bottom = 339.0
 z_index = 2
 script = ExtResource("28_wind")
 
+[node name="GrassWindEffect1" type="Node2D" parent="." unique_id=1849102939]
+z_index = 2
+script = ExtResource("28_wind")
+min_y = 810.0
+max_y = 865.0
+min_x = 450.0
+max_x = 1100.0
+base_speed = 135.0
+streak_count = 6
+speck_count = 10
+
+[node name="GrassWindEffect2" type="Node2D" parent="." unique_id=1849102940]
+z_index = 2
+script = ExtResource("28_wind")
+min_y = 815.0
+max_y = 870.0
+min_x = 1100.0
+max_x = 1750.0
+base_speed = 145.0
+streak_count = 6
+speck_count = 10
+
 [node name="FluidWater" parent="." unique_id=1526576869 instance=ExtResource("18_fluidwater")]
 position = Vector2(1845, 694)
-initial_drops = 100
+initial_drops = 25
 
 [node name="StoneWall" parent="." unique_id=1987654321 instance=ExtResource("27_stonewall")]
 position = Vector2(1540, 773)
 scale = Vector2(2, 2)
-max_stages = null
-current_stage = null
-wall_sheet = null

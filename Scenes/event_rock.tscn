@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://dic06qkh683di"]
+
+[ext_resource type="Texture2D" uid="uid://bt08hijcpk867" path="res://Sprites/diamond.png" id="1_diamond"]
+[ext_resource type="Script" path="res://Scripts/event_rock.gd" id="2_event_script"]
+[ext_resource type="Shader" uid="uid://bdyxgi7lrtr1i" path="res://Shaders/outline.gdshader" id="3_outline"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_diamond"]
+shader = ExtResource("3_outline")
+shader_parameter/line_color = Color(0, 0, 0, 1)
+shader_parameter/line_thickness = 1.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_diamond"]
+radius = 28.0
+
+[node name="EventRock" type="RigidBody2D" groups=["cargo", "event_rock", "grabbable", "rock"]]
+collision_layer = 2
+mass = 4.0
+contact_monitor = true
+max_contacts_reported = 4
+script = ExtResource("2_event_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+material = SubResource("ShaderMaterial_diamond")
+scale = Vector2(4.5, 4.5)
+texture = ExtResource("1_diamond")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_diamond")

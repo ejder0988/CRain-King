@@ -13,6 +13,7 @@ signal factory_upgraded(new_level: int)
 signal production_started()
 signal production_finished()
 signal brick_spawned(brick: RigidBody2D, level: int)
+signal upgrade_rock_spawned(rock: RigidBody2D, level: int)
 signal event_rock_spawned(rock: RigidBody2D, level: int)
 signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 
@@ -39,12 +40,22 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 @export var brick_scene: PackedScene = preload("res://Scenes/brick.tscn")
 ## PackedScene for normal rock fallback if needed
 @export var rock_scene: PackedScene = preload("res://Scenes/rock.tscn")
-## Optional PackedScene for Event Rock (If left empty, uses rock with special gold tint)
-@export var event_rock_scene: PackedScene
-## Probability of spawning an Event Rock instead of Brick (0.30 = 30%)
-@export_range(0.0, 1.0, 0.01) var event_rock_chance: float = 0.30
+## PackedScene for Upgrade Rock (Enderpearl)
+@export var upgrade_rock_scene: PackedScene = preload("res://Scenes/upgrade_rock.tscn")
+## Probability of spawning an Upgrade Rock instead of Brick (0.25 = 25%)
+@export_range(0.0, 1.0, 0.01) var upgrade_rock_chance: float = 0.25
+## İlk seferde kesinlikle Tuğla (Brick) çıkar, sonraki seferlerde Upgrade / Event Rock olasılığı devreye girer
+@export var guaranteed_first_brick: bool = true
+## PackedScene for Event Rock (Diamond - 5s timer)
+@export var event_rock_scene: PackedScene = preload("res://Scenes/event_rock.tscn")
+## Probability of spawning an Event Rock (0.25 = 25%)
+@export_range(0.0, 1.0, 0.01) var event_rock_chance: float = 0.25
 ## Global position where the finished product is spawned
 @export var spawn_position: Vector2 = Vector2(383, 862)
+
+@export_group("Pointer Settings")
+## When true, the tutorial pointer bobs up and down; when false, it remains stationary in place
+@export var enable_pointer_movement: bool = false
 
 @onready var sprite: Sprite2D = get_node_or_null("Sprite2D")
 @onready var label: Label = get_node_or_null("Label")
@@ -53,6 +64,7 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 
 var is_producing: bool = false
 var production_timer: float = 0.0
+var production_count: int = 0
 var _production_tween: Tween = null
 var _original_sprite_scale: Vector2 = Vector2.ONE
 var _original_sprite_pos: Vector2 = Vector2.ZERO
@@ -100,12 +112,17 @@ func _ready() -> void:
 func _on_drop_zone_body_entered(body: Node) -> void:
 	if not is_instance_valid(body) or is_producing:
 		return
+	# Upgrade Rock (Enderpearl) ve Event Rock kesinlikle fabrikaya tekrar giremez
+	if body.is_in_group("upgrade_rock") or body.get_meta("is_upgrade_rock", false) or body.is_in_group("event_rock") or body.get_meta("is_event_rock", false):
+		if body is RigidBody2D:
+			body.apply_central_impulse(Vector2(90.0, -45.0))
+		return
 	if body.is_in_group("rock") and not body.is_in_group("brick"):
 		accept_rock(body)
 
 
 func _process(delta: float) -> void:
-	if pointer and pointer.visible:
+	if enable_pointer_movement and pointer and pointer.visible:
 		var time := Time.get_ticks_msec() / 1000.0
 		pointer.position.y = _base_pointer_y + sin(time * 5.0) * 15.0
 
@@ -160,6 +177,11 @@ func hide_pointer_permanently() -> void:
 ## Attempts to feed a rock into the factory to begin brick production
 func accept_rock(rock_body: Node2D) -> bool:
 	if not is_instance_valid(rock_body):
+		return false
+
+	# Upgrade Rock (Enderpearl) ve Event Rock kesinlikle fabrikaya tekrar giremez
+	if rock_body.is_in_group("upgrade_rock") or rock_body.get_meta("is_upgrade_rock", false) or rock_body.is_in_group("event_rock") or rock_body.get_meta("is_event_rock", false):
+		print("[Factory] Upgrade Rock / Event Rock fabrikaya giremez! Bu taşlar özel amaçlıdır.")
 		return false
 
 	if is_producing:
@@ -255,11 +277,26 @@ func _finish_production() -> void:
 	if animation_player and animation_player.has_animation("popout"):
 		animation_player.play("popout")
 
-	# 30% chance for Event Rock, otherwise spawn Brick
-	var is_event_rock: bool = randf() < event_rock_chance
+	# İlk seferde kesinlikle Tuğla çıkar, sonraki seferlerde olasılıklar devreye girer
+	production_count += 1
+	var product_type: String = "brick"
+	if guaranteed_first_brick and production_count == 1:
+		product_type = "brick"
+		print("[Factory] İlk üretim: Kesin olarak Tuğla (Brick) üretildi!")
+	else:
+		var roll: float = randf()
+		if roll < upgrade_rock_chance:
+			product_type = "upgrade_rock"
+		elif roll < (upgrade_rock_chance + event_rock_chance):
+			product_type = "event_rock"
+		else:
+			product_type = "brick"
+
 	var spawned_product: RigidBody2D = null
 
-	if is_event_rock:
+	if product_type == "upgrade_rock":
+		spawned_product = _instantiate_upgrade_rock()
+	elif product_type == "event_rock":
 		spawned_product = _instantiate_event_rock()
 	else:
 		spawned_product = _instantiate_brick()
@@ -276,9 +313,12 @@ func _finish_production() -> void:
 		if w and w.has_method("add_collision_exception"):
 			w.add_collision_exception(spawned_product)
 
-		if is_event_rock:
+		if product_type == "event_rock":
 			event_rock_spawned.emit(spawned_product, current_level)
-			print("[Factory] ★ EVENT ROCK üretildi ve çıktı! Konum: ", spawn_position)
+			print("[Factory] ★ EVENT ROCK (Elmas - 5s Süreli) üretildi ve çıktı! Konum: ", spawn_position)
+		elif product_type == "upgrade_rock":
+			upgrade_rock_spawned.emit(spawned_product, current_level)
+			print("[Factory] ★ UPGRADE ROCK (Enderpearl) üretildi ve çıktı! Konum: ", spawn_position)
 		else:
 			brick_spawned.emit(spawned_product, current_level)
 			print("[Factory] TUĞLA (Brick) üretildi ve çıktı! Konum: ", spawn_position)
@@ -299,6 +339,31 @@ func _instantiate_brick() -> RigidBody2D:
 	return null
 
 
+func _instantiate_upgrade_rock() -> RigidBody2D:
+	var rock: RigidBody2D = null
+	if upgrade_rock_scene:
+		rock = upgrade_rock_scene.instantiate() as RigidBody2D
+	elif ResourceLoader.exists("res://Scenes/upgrade_rock.tscn"):
+		var urs := load("res://Scenes/upgrade_rock.tscn") as PackedScene
+		if urs:
+			rock = urs.instantiate() as RigidBody2D
+	elif rock_scene:
+		rock = rock_scene.instantiate() as RigidBody2D
+	elif ResourceLoader.exists("res://Scenes/rock.tscn"):
+		var rs := load("res://Scenes/rock.tscn") as PackedScene
+		if rs:
+			rock = rs.instantiate() as RigidBody2D
+
+	if rock:
+		rock.add_to_group("rock")
+		rock.add_to_group("upgrade_rock")
+		rock.add_to_group("cargo")
+		rock.add_to_group("grabbable")
+		rock.set_meta("is_upgrade_rock", true)
+
+	return rock
+
+
 func _instantiate_event_rock() -> RigidBody2D:
 	var rock: RigidBody2D = null
 	if event_rock_scene:
@@ -309,10 +374,6 @@ func _instantiate_event_rock() -> RigidBody2D:
 			rock = ers.instantiate() as RigidBody2D
 	elif rock_scene:
 		rock = rock_scene.instantiate() as RigidBody2D
-	elif ResourceLoader.exists("res://Scenes/rock.tscn"):
-		var rs := load("res://Scenes/rock.tscn") as PackedScene
-		if rs:
-			rock = rs.instantiate() as RigidBody2D
 
 	if rock:
 		rock.add_to_group("rock")
@@ -320,9 +381,24 @@ func _instantiate_event_rock() -> RigidBody2D:
 		rock.add_to_group("cargo")
 		rock.add_to_group("grabbable")
 		rock.set_meta("is_event_rock", true)
-		if not event_rock_scene:
-			rock.modulate = Color(1.3, 1.1, 0.4) # Glowing golden rock
 
+	return rock
+
+
+func spawn_event_rock(pos: Vector2 = Vector2.INF) -> RigidBody2D:
+	var target_pos: Vector2 = pos if pos != Vector2.INF else spawn_position
+	var rock := _instantiate_event_rock()
+	if rock:
+		rock.global_position = target_pos
+		var target_parent: Node = get_tree().current_scene if get_tree() else owner
+		if not target_parent:
+			target_parent = get_parent()
+		target_parent.add_child(rock)
+		var w = _find_fluid_water()
+		if w and w.has_method("add_collision_exception"):
+			w.add_collision_exception(rock)
+		event_rock_spawned.emit(rock, current_level)
+		print("[Factory] ★ Manuel Event Rock spawn edildi! Konum: ", target_pos)
 	return rock
 
 

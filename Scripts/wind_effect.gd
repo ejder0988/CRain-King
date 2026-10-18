@@ -1,14 +1,14 @@
 extends Node2D
 class_name UpperWindEffect
 
-## UpperWindEffect: Renders a continuous, gentle ambient breeze across the upper screen.
+## UpperWindEffect: Renders a continuous, gentle ambient breeze across the screen.
 ## Includes flowing sinusoidal wind streaks with soft tapered tails and curling tips,
-## plus floating airborne breeze specks that drift continuously through the upper atmosphere.
+## plus floating airborne breeze specks that drift continuously.
 
 @export_group("Wind Area")
 ## Minimum Y (vertical) screen boundary for the wind
 @export var min_y: float = 25.0
-## Maximum Y (vertical) screen boundary for the wind (upper atmosphere)
+## Maximum Y (vertical) screen boundary for the wind
 @export var max_y: float = 340.0
 ## Left horizontal spawn boundary
 @export var min_x: float = -120.0
@@ -16,6 +16,8 @@ class_name UpperWindEffect
 @export var max_x: float = 2040.0
 
 @export_group("Wind Dynamics")
+## Wind direction: -1.0 for blowing left (default), 1.0 for blowing right
+@export var wind_direction: float = -1.0
 ## Base horizontal drift speed (px/sec)
 @export var base_speed: float = 175.0
 ## Speed variation between different streaks
@@ -103,44 +105,65 @@ func _process(delta: float) -> void:
 	if delta <= 0.0:
 		return
 
+	var dir: float = -1.0 if wind_direction < 0.0 else 1.0
+
 	# Update wind streaks
 	for streak in _streaks:
-		streak.head_x += streak.speed * delta
+		streak.head_x += streak.speed * dir * delta
 		streak.phase += delta * 2.8
 
-		# Continuous wrap-around from left when moving past right edge
-		if streak.head_x - streak.length > max_x:
-			streak.head_x = min_x - _rng.randf_range(0.0, 80.0)
-			streak.base_y = _rng.randf_range(min_y, max_y)
-			streak.length = _rng.randf_range(90.0, 230.0)
-			streak.speed = base_speed + _rng.randf_range(-speed_variation, speed_variation)
-			streak.thickness = _rng.randf_range(1.4, 2.4)
-			streak.wave_amp = _rng.randf_range(4.0, 9.0)
-			streak.has_curl = (_rng.randf() < 0.35)
-			streak.curl_radius = _rng.randf_range(4.0, 8.0)
-			streak.curl_dir = 1.0 if (_rng.randf() < 0.5) else -1.0
+		if dir < 0.0:
+			# Moving LEFT: wraps when tail (head_x + length) is past min_x
+			if streak.head_x + streak.length < min_x:
+				streak.head_x = max_x + _rng.randf_range(0.0, 80.0)
+				streak.base_y = _rng.randf_range(min_y, max_y)
+				streak.length = _rng.randf_range(90.0, 230.0)
+				streak.speed = base_speed + _rng.randf_range(-speed_variation, speed_variation)
+				streak.thickness = _rng.randf_range(1.4, 2.4)
+				streak.wave_amp = _rng.randf_range(4.0, 9.0)
+				streak.has_curl = (_rng.randf() < 0.35)
+				streak.curl_radius = _rng.randf_range(4.0, 8.0)
+				streak.curl_dir = 1.0 if (_rng.randf() < 0.5) else -1.0
+		else:
+			# Moving RIGHT: wraps when tail (head_x - length) is past max_x
+			if streak.head_x - streak.length > max_x:
+				streak.head_x = min_x - _rng.randf_range(0.0, 80.0)
+				streak.base_y = _rng.randf_range(min_y, max_y)
+				streak.length = _rng.randf_range(90.0, 230.0)
+				streak.speed = base_speed + _rng.randf_range(-speed_variation, speed_variation)
+				streak.thickness = _rng.randf_range(1.4, 2.4)
+				streak.wave_amp = _rng.randf_range(4.0, 9.0)
+				streak.has_curl = (_rng.randf() < 0.35)
+				streak.curl_radius = _rng.randf_range(4.0, 8.0)
+				streak.curl_dir = 1.0 if (_rng.randf() < 0.5) else -1.0
 
 	# Update breeze particles
 	for speck in _specks:
-		speck.x += speck.speed * delta
+		speck.x += speck.speed * dir * delta
 		speck.phase += delta * speck.bob_freq
 
-		if speck.x > max_x:
-			speck.x = min_x - _rng.randf_range(0.0, 60.0)
-			speck.base_y = _rng.randf_range(min_y, max_y)
-			speck.speed = base_speed * _rng.randf_range(0.8, 1.25)
+		if dir < 0.0:
+			if speck.x < min_x:
+				speck.x = max_x + _rng.randf_range(0.0, 60.0)
+				speck.base_y = _rng.randf_range(min_y, max_y)
+				speck.speed = base_speed * _rng.randf_range(0.8, 1.25)
+		else:
+			if speck.x > max_x:
+				speck.x = min_x - _rng.randf_range(0.0, 60.0)
+				speck.base_y = _rng.randf_range(min_y, max_y)
+				speck.speed = base_speed * _rng.randf_range(0.8, 1.25)
 
 	queue_redraw()
 
 
 func _draw() -> void:
-	var t_now: float = Time.get_ticks_msec() * 0.001
+	var dir: float = -1.0 if wind_direction < 0.0 else 1.0
 
 	# 1. DRAW DRIFTING WIND STREAKS (Soft undulating breeze ribbons)
 	for streak in _streaks:
-		var tail_x: float = streak.head_x - streak.length
+		var tail_x: float = streak.head_x - (streak.length * dir)
 		var segments: int = 10
-		var step: float = streak.length / float(segments)
+		var step: float = (streak.length * dir) / float(segments)
 
 		var points: PackedVector2Array = PackedVector2Array()
 		var colors: PackedColorArray = PackedColorArray()
@@ -184,7 +207,9 @@ func _draw() -> void:
 				var curl_col := wind_color
 				curl_col.a = curl_a
 				var curl_center: Vector2 = head_pt + Vector2(0.0, -streak.curl_radius * streak.curl_dir)
-				draw_arc(curl_center, streak.curl_radius, 0.0, PI * 1.25 * streak.curl_dir, 10, curl_col, streak.thickness * 0.8, true)
+				var start_ang: float = 0.0 if dir > 0.0 else PI
+				var ang_span: float = PI * 1.25 * streak.curl_dir * (1.0 if dir > 0.0 else -1.0)
+				draw_arc(curl_center, streak.curl_radius, start_ang, start_ang + ang_span, 10, curl_col, streak.thickness * 0.8, true)
 
 	# 2. DRAW AIRBORNE BREEZE PARTICLES (Floating specks)
 	for speck in _specks:
@@ -201,7 +226,7 @@ func _draw() -> void:
 		c.a = a
 		if c.a > 0.01:
 			draw_circle(Vector2(speck.x, py), speck.radius, c)
-			# Subtle trailing wisp
+			# Subtle trailing wisp behind the moving particle
 			var tail_col := c
 			tail_col.a *= 0.4
-			draw_line(Vector2(speck.x - 6.0, py), Vector2(speck.x, py), tail_col, speck.radius * 0.8)
+			draw_line(Vector2(speck.x - 6.0 * dir, py), Vector2(speck.x, py), tail_col, speck.radius * 0.8)

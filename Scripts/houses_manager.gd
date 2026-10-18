@@ -92,12 +92,16 @@ func _init_houses() -> void:
 			if _cached_fluid_water:
 				_cached_fluid_water.add_collision_exception(house)
 
-			# House sinyallerini lambda OLMADAN doğrudan bağla (lambda capture hatalarını önler)
-			if house is House:
-				var h := house as House
-				h.level_changed.connect(_on_house_level_changed)
-				h.floor_broken.connect(_on_house_floor_broken)
-				h.house_destroyed.connect(_on_house_destroyed)
+			# House sinyallerini doğrudan bağla
+			if house.has_signal("level_changed"):
+				if not house.level_changed.is_connected(_on_house_level_changed):
+					house.level_changed.connect(_on_house_level_changed)
+			if house.has_signal("floor_broken"):
+				if not house.floor_broken.is_connected(_on_house_floor_broken):
+					house.floor_broken.connect(_on_house_floor_broken)
+			if house.has_signal("house_destroyed"):
+				if not house.house_destroyed.is_connected(_on_house_destroyed):
+					house.house_destroyed.connect(_on_house_destroyed)
 
 	print("[HousesManager] Başlatıldı: ", _managed_houses.size(), " ev aktif. Toplam Can: ", get_total_health())
 
@@ -120,11 +124,9 @@ func _physics_process(delta: float) -> void:
 			continue
 
 		# Kırılma animasyonu oynarken veya yok edilirken yeni hasar almasın
-		if house is House:
-			var h := house as House
-			if h.is_breaking or h.is_destroyed:
-				_submerged_timers[house] = 0.0
-				continue
+		if ("is_breaking" in house and house.is_breaking) or ("is_destroyed" in house and house.is_destroyed):
+			_submerged_timers[house] = 0.0
+			continue
 
 		# Hasar bekleme süresi kontrolü (cooldown)
 		if current_time_msec < _damage_cooldown_until.get(house, 0):
@@ -179,13 +181,12 @@ func _check_house_collision_submerged(bounds: Dictionary) -> bool:
 	return dense_water_y <= bounds.top + 2.0
 
 
-
 func _start_house_destruction(house: StaticBody2D, bounds: Dictionary) -> void:
-	# 1. Eğer ev House sınıfından ise multi-level hasar mekaniğini çağır
-	if house is House:
-		var h := house as House
-		print("Ev collision'ı su altında kaldı, hasar alıyor: ", house.name, " (Mevcut Seviye: ", h.current_level, ")")
-		h.take_damage()
+	# 1. Eğer ev hasar alma metoduna sahipse multi-level hasar mekaniğini çağır
+	if house.has_method("take_damage"):
+		var lvl = house.get("current_level")
+		print("Ev collision'ı su altında kaldı, hasar alıyor: ", house.name, " (Mevcut Seviye: ", lvl, ")")
+		house.take_damage()
 		return
 
 	# 2. Standart StaticBody2D için geriye uyumlu prosedürel yıkılma
@@ -197,7 +198,7 @@ func _on_house_level_changed(_new_lvl: int, _max_lvl: int) -> void:
 	_update_health_hud()
 
 
-func _on_house_floor_broken(house: House, broken_floor: int, remaining_level: int) -> void:
+func _on_house_floor_broken(house: Node2D, broken_floor: int, remaining_level: int) -> void:
 	if is_instance_valid(house):
 		var bounds := _get_house_bounds(house)
 		_spawn_house_debris(house, bounds)
@@ -206,7 +207,7 @@ func _on_house_floor_broken(house: House, broken_floor: int, remaining_level: in
 	print("[HousesManager] ", h_name, " çatı katı (Kat ", broken_floor, ") kırıldı. Kalan seviye: ", remaining_level)
 
 
-func _on_house_destroyed(house: House) -> void:
+func _on_house_destroyed(house: Node2D) -> void:
 	var h_name: String = house.name if is_instance_valid(house) else "Ev"
 	_managed_houses.erase(house)
 	_submerged_timers.erase(house)
@@ -272,8 +273,8 @@ func get_total_health() -> int:
 	var total: int = 0
 	for h in _managed_houses:
 		if is_instance_valid(h):
-			if h is House:
-				total += (h as House).current_level
+			if "current_level" in h:
+				total += int(h.current_level)
 			else:
 				total += 1
 	return total
@@ -284,8 +285,8 @@ func get_max_health() -> int:
 	var max_hp: int = 0
 	for h in _managed_houses:
 		if is_instance_valid(h):
-			if h is House:
-				max_hp += (h as House).max_level
+			if "max_level" in h:
+				max_hp += int(h.max_level)
 			else:
 				max_hp += 1
 	return maxi(max_hp, 1)
@@ -411,11 +412,9 @@ func _show_game_over_ui() -> void:
 	tw.tween_property(overlay, "color", Color(0.04, 0.02, 0.03, 0.85), 0.8)
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if _is_game_over and event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_R:
-			get_viewport().set_input_as_handled()
-			restart_game()
+func _unhandled_input(_event: InputEvent) -> void:
+	# Oyun yeniden başlatma buttons.gd içerisindeki R tuşunu basılı tutma barı ile yönetilir
+	pass
 
 
 func restart_game() -> void:

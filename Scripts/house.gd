@@ -13,8 +13,8 @@ class_name House
 ##      AnimatedSprite2D ise kırılan çatı katının Y pozisyonunda (yukarıda) kırılma animasyonunu oynatır.
 
 signal level_changed(new_level: int, max_level: int)
-signal floor_broken(house: House, broken_floor: int, remaining_level: int)
-signal house_destroyed(house: House)
+signal floor_broken(house: Node2D, broken_floor: int, remaining_level: int)
+signal house_destroyed(house: Node2D)
 
 @export_group("Visual Settings")
 ## Sprite2D ve AnimatedSprite2D'yi yatay olarak ters çevir (Flip X yönü)
@@ -59,6 +59,10 @@ signal house_destroyed(house: House)
 @export_group("UI & Feedback")
 ## Evin üzerinde seviye göstergesini göster
 @export var show_level_label: bool = true
+
+@export_group("Pointer Settings")
+## When true, the tutorial pointer bobs up and down; when false, it remains stationary
+@export var enable_pointer_movement: bool = false
 
 @onready var sprite: Sprite2D = get_node_or_null("Sprite2D")
 @onready var anim_sprite: AnimatedSprite2D = get_node_or_null("AnimatedSprite2D")
@@ -133,6 +137,8 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
+		return
+	if not enable_pointer_movement:
 		return
 	var p := _get_pointer_sprite()
 	if p and p.visible:
@@ -275,7 +281,7 @@ func get_floor_height() -> float:
 		return _base_sprite_height
 	if _base_collision_size.y > 0.0:
 		return _base_collision_size.y
-	return 17.0
+	return 20.0
 
 
 ## Evi bir üst seviyeye yükseltir

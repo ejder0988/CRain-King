@@ -2,13 +2,13 @@
 
 importer="wav"
 type="AudioStreamWAV"
-uid="uid://cqo8enrgwcitf"
-path="res://.godot/imported/HouseBoom.wav-7805c2e740a9b0ad579b42e0172980a7.sample"
+uid="uid://k75ivv3322fx"
+path="res://.godot/imported/CraneTurn.wav-7cd5ecfe0b54b45427f409b9af618ebc.sample"
 
 [deps]
 
-source_file="res://Sounds/Rain/HouseBoom.wav"
-dest_files=["res://.godot/imported/HouseBoom.wav-7805c2e740a9b0ad579b42e0172980a7.sample"]
+source_file="res://Sounds/CraneTurn.wav"
+dest_files=["res://.godot/imported/CraneTurn.wav-7cd5ecfe0b54b45427f409b9af618ebc.sample"]
 
 [params]
 

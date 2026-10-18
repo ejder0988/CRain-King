@@ -5,6 +5,7 @@ class_name CraneAimTrajectory
 ## and a sci-fi target reticle / lock-on crosshair for the crane aim system.
 
 @export var show_dots: bool = false ## Set to true if dotted laser trail should be drawn (disabled per user request)
+@export var show_cursor: bool = false ## Set to true if target reticle / landing crosshair cursor should be drawn (disabled by default)
 @export var dot_count: int = 7
 @export var dot_radius: float = 3.5
 @export var dot_spacing: float = 46.0
@@ -109,16 +110,17 @@ func _draw() -> void:
 			curr_d += dot_spacing
 
 	# 2. DRAW TARGET RETICLE / LANDING CROSSHAIR
-	var reticle_center: Vector2 = locked_target_local
-	var base_r: float = 24.0 if is_locked_on else 16.0
-	var pulse_r: float = base_r + (sin(Time.get_ticks_msec() * 0.01) * 3.0 if is_locked_on else 0.0)
+	if show_cursor:
+		var reticle_center: Vector2 = locked_target_local
+		var base_r: float = 24.0 if is_locked_on else 16.0
+		var pulse_r: float = base_r + (sin(Time.get_ticks_msec() * 0.01) * 3.0 if is_locked_on else 0.0)
 
-	if is_locked_on:
-		# Lock-on Bracket Ring (Electric Gold/Green Target Box)
-		_draw_lockon_reticle(reticle_center, pulse_r, draw_col, glow_col)
-	else:
-		# Sleek landing diamond / crosshair on terrain or max reach
-		_draw_landing_crosshair(reticle_center, pulse_r, draw_col)
+		if is_locked_on:
+			# Lock-on Bracket Ring (Electric Gold/Green Target Box)
+			_draw_lockon_reticle(reticle_center, pulse_r, draw_col, glow_col)
+		else:
+			# Sleek landing diamond / crosshair on terrain or max reach
+			_draw_landing_crosshair(reticle_center, pulse_r, draw_col)
 
 
 func _draw_lockon_reticle(center: Vector2, radius: float, col: Color, glow: Color) -> void:

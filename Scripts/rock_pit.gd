@@ -20,6 +20,16 @@ signal rock_dispensed(rock: RigidBody2D)
 ## Offset inside the pit where the rock emerges from
 @export var dispense_offset: Vector2 = Vector2(0.0, 12.0)
 
+@export_group("Pointer Settings")
+## When true, the tutorial pointer bobs up and down; when false, it remains stationary
+@export var enable_pointer_movement: bool = false
+
+@export_group("Repulsion Settings")
+## Horizontal distance from pit center to displace non-water objects (so payload can reach them)
+@export var repel_distance_x: float = 125.0
+## Horizontal push speed given to displaced objects
+@export var repel_speed: float = 220.0
+
 @onready var sprite: Sprite2D = get_node_or_null("Sprite2D")
 @onready var pointer: Sprite2D = get_node_or_null("PointerSprite2D")
 
@@ -54,7 +64,7 @@ func _process(delta: float) -> void:
 			_is_on_cooldown = false
 
 	# Pointer animation while awaiting first mining
-	if pointer and pointer.visible:
+	if enable_pointer_movement and pointer and pointer.visible:
 		var time := Time.get_ticks_msec() / 1000.0
 		pointer.position.y = _base_pointer_y + sin(time * 4.5) * 4.0
 
@@ -89,23 +99,97 @@ func _check_crane_payload_proximity() -> void:
 			crane.pickup_cargo_direct(rock)
 
 
+func _physics_process(delta: float) -> void:
+	_repel_objects_in_pit_zone(delta)
+
+
+func _repel_objects_in_pit_zone(delta: float) -> void:
+	var tree := get_tree()
+	if not tree:
+		return
+	var crane = tree.get_first_node_in_group("crane")
+
+	var candidates: Array[Node] = []
+	var area := get_node_or_null("PickupArea") as Area2D
+	if area:
+		for b in area.get_overlapping_bodies():
+			if not candidates.has(b):
+				candidates.append(b)
+
+	var check_groups := ["cargo", "rock", "brick", "upgrade_rock"]
+	for grp in check_groups:
+		for n in tree.get_nodes_in_group(grp):
+			if n is RigidBody2D and not candidates.has(n):
+				var diff: Vector2 = (n as RigidBody2D).global_position - global_position
+				if absf(diff.x) < (repel_distance_x + 15.0) and diff.y >= -75.0 and diff.y <= 65.0:
+					candidates.append(n)
+
+	for c in candidates:
+		if c is RigidBody2D and is_instance_valid(c):
+			var rb := c as RigidBody2D
+			if _is_water_object(rb) or _is_crane_or_held_object(rb, crane):
+				continue
+			var diff: Vector2 = rb.global_position - global_position
+			if absf(diff.x) < repel_distance_x and diff.y >= -75.0 and diff.y <= 65.0:
+				_repel_single_object(rb, delta)
+
+
+func _repel_single_object(body: RigidBody2D, delta: float) -> void:
+	if not is_instance_valid(body):
+		return
+	var diff: Vector2 = body.global_position - global_position
+	# Push right if on right half or center; push left if on left half
+	var push_sign: float = 1.0 if diff.x >= 0.0 else -1.0
+
+	body.linear_velocity.x = push_sign * maxf(absf(body.linear_velocity.x), repel_speed)
+	if body.linear_velocity.y > -60.0:
+		body.linear_velocity.y = -80.0
+
+	body.global_position.x += push_sign * 120.0 * delta
+
+
+func _is_water_object(node: Node) -> bool:
+	if not node or not is_instance_valid(node):
+		return true
+	if node.is_in_group("fluid_water") or node.is_in_group("water"):
+		return true
+	var s = node.get_script()
+	if s and ("water" in s.resource_path.to_lower()):
+		return true
+	return false
+
+
+func _is_crane_or_held_object(node: Node, crane: Node) -> bool:
+	if not node or not is_instance_valid(node):
+		return true
+	if crane and is_instance_valid(crane):
+		if node == crane or node.name == "Payload" or node.is_in_group("payload"):
+			return true
+		if "grabbed_body" in crane and crane.grabbed_body == node:
+			return true
+	return false
+
+
 func _on_pickup_area_body_entered(body: Node) -> void:
-	if _is_on_cooldown:
+	if not is_instance_valid(body):
 		return
 
 	var tree := get_tree()
 	if not tree:
 		return
 	var crane = tree.get_first_node_in_group("crane")
-	if not crane or not is_instance_valid(crane):
-		return
+	var payload: Node2D = crane.get("payload") as Node2D if crane else null
 
-	var payload: Node2D = crane.get("payload") as Node2D
-	if body == payload:
+	if body == payload and not _is_on_cooldown:
 		if ("is_carrying_cargo" in crane and not crane.is_carrying_cargo) and ("is_carrying_water" in crane and not crane.is_carrying_water):
 			var rock := dispense_rock_to_crane(crane)
 			if rock and crane.has_method("pickup_cargo_direct"):
 				crane.pickup_cargo_direct(rock)
+			return
+
+	# If another physical object (not water, not held cargo) enters the pit, immediately repel it!
+	if body is RigidBody2D and not _is_water_object(body) and not _is_crane_or_held_object(body, crane):
+		_repel_single_object(body as RigidBody2D, 0.016)
 
 
 ## Dispenses a rock directly to the crane hook from inside/behind the pit

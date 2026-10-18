@@ -58,7 +58,7 @@ class_name CraneController
 @export_group("Payload Tier & Speed Upgrades")
 ## Payload upgrade tier (1: Standard Physics, 2: Fast Rocket-Guided with better_catch animation)
 @export var payload_tier: int = 1
-## Key to toggle/upgrade payload tier (Default: K)
+## Key to toggle/upgrade payload tier in debug mode (Default: K)
 @export var payload_upgrade_key: Key = KEY_K
 ## Standard trolley traverse speed (px/s) for Tier 1
 @export var trolley_speed_tier1: float = 380.0
@@ -72,6 +72,12 @@ class_name CraneController
 @export var fling_multiplier_tier1: float = 2.0
 @export var fling_multiplier_tier2: float = 2.6
 
+@export_group("Event Rock Temporary Speed Boost")
+## Duration in seconds of the speed boost when an Event Rock is consumed (Default: 15.0s)
+@export var event_boost_duration: float = 15.0
+var is_event_boost_active: bool = false
+var _event_boost_timer: float = 0.0
+
 @export_group("Aim Trajectory & Arrow Juice")
 ## Enable pulsing bob animation along the aim direction
 @export var enable_arrow_bob: bool = true
@@ -81,8 +87,12 @@ class_name CraneController
 @export var arrow_bob_speed: float = 7.0
 ## Enable velocity stretch and inertia tilt when swinging
 @export var enable_arrow_stretch: bool = true
+## Enable the landing cursor / target reticle ahead of the arrow showing where payload will go (disabled by default)
+@export var enable_aim_cursor: bool = false
+## Optional keyboard key to toggle the aim cursor in-game (Default: KEY_NONE / assignable in Inspector)
+@export var toggle_aim_cursor_key: Key = KEY_NONE
 ## Enable streaming dotted trajectory laser line
-@export var enable_trajectory_dots: bool = true
+@export var enable_trajectory_dots: bool = false
 ## Enable smart target detection and color lock-on
 @export var enable_target_lockon: bool = true
 ## Default aim color (electric cyan / neon blue)
@@ -94,6 +104,22 @@ class_name CraneController
 
 @export_group("Cargo Carrying & Release")
 @export var cargo_carry_offset_y: float = 36.0 ## Vertical distance of cargo below payload center
+
+@export_group("Crane & Payload Audio")
+## Custom audio file for payload catching/grabbing cargo or water (default: res://Sounds/PayloadCatch.wav)
+@export var payload_catch_audio: AudioStream = null
+## Volume (dB) for payload catch sound
+@export var payload_catch_volume_db: float = 0.0
+
+## Custom audio file for crane tower turning (default: res://Sounds/CraneTurn.wav)
+@export var crane_turn_audio: AudioStream = null
+## Volume (dB) for crane turn sound
+@export var crane_turn_volume_db: float = 0.0
+
+## Custom audio file for trolley moving along the boom (default: res://Sounds/TrolleyMove.wav)
+@export var trolley_move_audio: AudioStream = null
+## Volume (dB) for trolley move sound
+@export var trolley_move_volume_db: float = -2.0
 
 @export_group("Water Interaction & Audio")
 ## Enable payload physical interaction and scooping with fluid water
@@ -219,6 +245,10 @@ var _water_audio_player: AudioStreamPlayer2D = null
 var _was_in_water_prev_frame: bool = false
 var _water_splash_cooldown: float = 0.0
 
+var _payload_catch_audio_player: AudioStreamPlayer2D = null
+var _crane_turn_audio_player: AudioStreamPlayer2D = null
+var _trolley_move_audio_player: AudioStreamPlayer2D = null
+
 var is_descending: bool = false ## True when lowering winch with catch sequence
 var has_resolved_landing: bool = false ## True once ground/cargo landing has resolved
 var has_caught_object: bool = false ## True if hook contacted a grabbable object
@@ -230,6 +260,7 @@ var is_aim_locked_on: bool = false
 var locked_target_node: Node2D = null
 var _was_locked_on_prev_frame: bool = false
 var _payload_key_pressed_prev: bool = false
+var _toggle_cursor_key_pressed_prev: bool = false
 var _rocket_visual: PayloadRocketVisual = null
 
 
@@ -335,6 +366,8 @@ func _ready() -> void:
 		_aim_trajectory = CraneAimTrajectory.new()
 		_aim_trajectory.name = "AimTrajectory"
 		add_child(_aim_trajectory)
+	_aim_trajectory.show_cursor = enable_aim_cursor
+	_aim_trajectory.show_dots = enable_trajectory_dots
 
 	_update_trolley_position()
 	prev_trolley_pos = trolley_pivot.global_position
@@ -397,6 +430,8 @@ func _ready() -> void:
 
 	# Initialize water splash audio player
 	_init_water_audio_player()
+	# Initialize crane, trolley and payload audio players
+	_init_crane_audio_players()
 
 	# Initialize active tier physics parameters from Inspector settings
 	set_payload_tier(payload_tier)
@@ -414,19 +449,41 @@ func _physics_process(delta: float) -> void:
 	# 1. Cable trolley moves back and forth along the boom (carrying cargo anywhere player wants)
 	_handle_trolley_movement(delta)
 
-	# Handle payload tier upgrade input (K key) - Debug only
+	# Manage temporary Event Rock rocket boost
+	if is_event_boost_active:
+		_event_boost_timer -= delta
+		if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("better_catch"):
+			if payload_sprite.animation != &"better_catch":
+				payload_sprite.play("better_catch")
+		if _rocket_visual:
+			_rocket_visual.set_firing(true)
+			_rocket_visual.flame_scale = 1.45 if (is_descending or absf(trolley_velocity) > 60.0) else 1.0
+
+		if _event_boost_timer <= 0.0:
+			_end_event_boost()
+
+	# Handle payload tier upgrade input (K key) - Debug only: triggers temporary boost
 	var gm = get_node_or_null("/root/GameManager")
 	var is_debug: bool = gm and gm.debug_mode
 	if is_debug and Input.is_key_pressed(payload_upgrade_key):
 		if not _payload_key_pressed_prev:
 			_payload_key_pressed_prev = true
-			if payload_tier == 1:
-				upgrade_payload()
+			if not is_event_boost_active:
+				trigger_event_boost(event_boost_duration)
 			else:
-				set_payload_tier(1)
+				_end_event_boost()
 	else:
 		if not Input.is_key_pressed(payload_upgrade_key):
 			_payload_key_pressed_prev = false
+
+	# Handle aim cursor toggle key
+	if toggle_aim_cursor_key != KEY_NONE and Input.is_key_pressed(toggle_aim_cursor_key):
+		if not _toggle_cursor_key_pressed_prev:
+			_toggle_cursor_key_pressed_prev = true
+			toggle_aim_cursor()
+	else:
+		if toggle_aim_cursor_key != KEY_NONE and not Input.is_key_pressed(toggle_aim_cursor_key):
+			_toggle_cursor_key_pressed_prev = false
 
 	# 2. Aim & swing oscillation when at the top, or angled descent trajectory when deployed
 	if is_at_top:
@@ -482,6 +539,8 @@ func _physics_process(delta: float) -> void:
 # 5. TROLLEY MOVEMENT (FORWARD / BACKWARD)
 # ==============================================================================
 func _get_horizontal_input() -> float:
+	if ButtonsController.is_esc_menu_open:
+		return 0.0
 	var axis: float = 0.0
 	if Input.is_action_pressed("move_left") or Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
 		axis -= 1.0
@@ -498,12 +557,14 @@ func _handle_trolley_movement(delta: float) -> void:
 			trolley_velocity = Vector2.ZERO
 		if trolley_pivot:
 			prev_trolley_pos = trolley_pivot.global_position
+		_stop_trolley_move_sound()
 		return
 	if not is_at_top and lock_trolley_during_descent:
 		trolley_velocity = Vector2.ZERO
 		if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
 			if trolley_sprite.animation != &"default":
 				trolley_sprite.play("default")
+		_stop_trolley_move_sound()
 		return
 
 	var input_x: float = _get_horizontal_input()
@@ -521,10 +582,12 @@ func _handle_trolley_movement(delta: float) -> void:
 		if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("move"):
 			if trolley_sprite.animation != &"move" or not trolley_sprite.is_playing():
 				trolley_sprite.play("move")
+		_play_trolley_move_sound()
 	else:
 		if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
 			if trolley_sprite.animation != &"default":
 				trolley_sprite.play("default")
+		_stop_trolley_move_sound()
 
 	_update_trolley_position()
 
@@ -683,6 +746,8 @@ func _update_swing_oscillation(delta: float) -> void:
 
 	# 3. Update Trajectory Reticle
 	if _aim_trajectory:
+		_aim_trajectory.show_cursor = enable_aim_cursor
+		_aim_trajectory.show_dots = enable_trajectory_dots
 		var rope_origin: Vector2 = _get_rope_origin()
 		var target_pos: Vector2 = locked_target_node.global_position if is_aim_locked_on else (rope_origin + aim_dir * max_rope_length)
 		_aim_trajectory.update_aim(
@@ -692,7 +757,7 @@ func _update_swing_oscillation(delta: float) -> void:
 			is_aim_locked_on,
 			target_pos,
 			target_color,
-			is_at_top and enable_trajectory_dots,
+			is_at_top and (enable_trajectory_dots or enable_aim_cursor),
 			(payload_tier >= 2)
 		)
 
@@ -767,10 +832,12 @@ func _check_target_lockon(aim_dir: Vector2) -> Node2D:
 			var best_house = null
 			var best_proj: float = 999999.0
 			for h in houses:
-				if not is_instance_valid(h) or not (h is House):
+				if not is_instance_valid(h):
 					continue
-				var house := h as House
-				if house.is_destroyed or house.current_level >= house.max_level:
+				var house = h
+				if ("is_destroyed" in house and house.is_destroyed) or ("current_level" in house and "max_level" in house and house.current_level >= house.max_level):
+					continue
+				if not house.has_method("get_bounds"):
 					continue
 				var bounds: Dictionary = house.get_bounds()
 				var h_target := Vector2((bounds.left + bounds.right) * 0.5, bounds.top)
@@ -826,8 +893,8 @@ func _launch_aimed_descent() -> void:
 	locked_aim_angle = current_swing_angle
 	locked_aim_dir = Vector2.DOWN.rotated(locked_aim_angle)
 
-	# Ignite rocket thruster visuals for Tier 2
-	if payload_tier >= 2 and _rocket_visual:
+	# Ignite rocket thruster visuals for Boosted state
+	if (is_event_boost_active or payload_tier >= 2) and _rocket_visual:
 		_rocket_visual.set_firing(true)
 
 	# Launch burst juice effect on arrow
@@ -886,10 +953,11 @@ func _update_deployed_trajectory(delta: float) -> void:
 
 	var total_deployed_accel: float = restoring + damping + coriolis
 
-	if payload_tier >= 2:
-		# Tier 2: ROCKET-POWERED GUIDED HOOK
+	if is_event_boost_active or payload_tier >= 2:
+		# Tier 2 / Boosted: ROCKET-POWERED GUIDED HOOK
 		if _rocket_visual:
-			_rocket_visual.set_firing(is_descending)
+			_rocket_visual.set_firing(true)
+			_rocket_visual.flame_scale = 1.45 if (is_descending or absf(trolley_velocity) > 60.0) else 1.0
 
 		# 1. Active Rocket Guidance towards target if locked or nearby
 		if locked_target_node and is_instance_valid(locked_target_node):
@@ -952,7 +1020,7 @@ func _update_deployed_trajectory(delta: float) -> void:
 		is_descending = false
 		has_resolved_landing = false
 		current_payload_level = PayloadLevel.TOP
-		if _rocket_visual:
+		if not is_event_boost_active and _rocket_visual:
 			_rocket_visual.set_firing(false)
 		if arrow:
 			arrow.visible = true
@@ -963,10 +1031,14 @@ func _update_deployed_trajectory(delta: float) -> void:
 		if _aim_trajectory:
 			_aim_trajectory.play_reset_pop()
 
-		# When returning to top, ensure default animation is playing
-		if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
-			if payload_sprite.animation == &"catch_start" or payload_sprite.animation == &"catch_loop" or payload_sprite.animation == &"better_catch":
-				payload_sprite.play("default")
+		# When returning to top, ensure default animation is playing (unless boosted!)
+		if not is_event_boost_active:
+			if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
+				if payload_sprite.animation == &"catch_start" or payload_sprite.animation == &"catch_loop" or payload_sprite.animation == &"better_catch":
+					payload_sprite.play("default")
+		else:
+			if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("better_catch"):
+				payload_sprite.play("better_catch")
 
 		# Resume swinging seamlessly from current angle
 		current_swing_angle = locked_aim_angle
@@ -977,7 +1049,7 @@ func _update_deployed_trajectory(delta: float) -> void:
 # 7. WINCH TARGET & INPUT CONTROL
 # ==============================================================================
 func _handle_rope_winch_target(_delta: float) -> void:
-	if is_turning:
+	if ButtonsController.is_esc_menu_open or is_turning:
 		return
 
 	var is_space_pressed: bool = (
@@ -1164,6 +1236,7 @@ func _resolve_landing() -> void:
 			if payload:
 				payload.add_collision_exception_with(grabbed_body)
 			cargo_picked_up.emit(grabbed_body)
+			_play_payload_catch_sound()
 			_trigger_pickup_screen_shake()
 			_trigger_hit_stop()
 			_update_house_upgrade_pointers()
@@ -1217,6 +1290,7 @@ func pickup_cargo_direct(cargo: RigidBody2D) -> bool:
 	if payload:
 		payload.add_collision_exception_with(cargo)
 	cargo_picked_up.emit(cargo)
+	_play_payload_catch_sound()
 	_trigger_pickup_screen_shake()
 	_trigger_hit_stop()
 	_update_house_upgrade_pointers()
@@ -1294,7 +1368,7 @@ func _release_cargo() -> void:
 	# 1. Unfreeze physics body so it flies with real gravity and collisions
 	released_ref.set_deferred("freeze", false)
 
-	# 2. Inherit crane velocity + generous tangential swing fling momentum
+	# 2. Inherit crane velocity + generous tangential swing fling momentum if actively moving/swinging
 	var release_velocity: Vector2 = Vector2.ZERO
 	if is_at_top:
 		var swing_dir: Vector2 = Vector2.DOWN.rotated(current_swing_angle)
@@ -1305,24 +1379,27 @@ func _release_cargo() -> void:
 		var trolley_mult: float = 1.4 if payload_tier >= 2 else 1.15
 		var tangential_speed: float = (angular_vel * current_rope_length) * fling_multiplier
 
-		release_velocity = tangent_dir * tangential_speed + trolley_velocity * trolley_mult
+		var raw_momentum: Vector2 = tangent_dir * tangential_speed + trolley_velocity * trolley_mult
 
-		# Loft assist: if releasing while swinging upward, add upward fling trajectory
-		if (tangent_dir.y * angular_vel) < 0.0:
-			release_velocity.y -= absf(tangential_speed) * 0.28
+		# If there is real physics momentum (active swing or moving trolley), fling with momentum!
+		if absf(angular_vel) > 0.12 or trolley_velocity.length() > 35.0:
+			release_velocity = raw_momentum
+			# Loft assist: if releasing while swinging upward, add upward fling trajectory
+			if (tangent_dir.y * angular_vel) < 0.0:
+				release_velocity.y -= absf(tangential_speed) * 0.28
 
-		# Tier 2 rocket burst boost in the fling direction
-		if payload_tier >= 2:
-			var fling_dir: Vector2 = release_velocity.normalized()
-			if fling_dir == Vector2.ZERO:
-				fling_dir = Vector2(float(facing_direction), -0.5).normalized()
-			release_velocity += fling_dir * 180.0
-
-		# Ensure minimum satisfying toss forward even if nearly still
-		if release_velocity.length() < 120.0:
-			release_velocity = Vector2(float(facing_direction) * 140.0, -70.0)
+			# Tier 2 rocket burst boost in the fling direction only if already flinging
+			if payload_tier >= 2 and release_velocity.length() > 50.0:
+				var fling_dir: Vector2 = release_velocity.normalized()
+				release_velocity += fling_dir * 140.0
+		else:
+			# No significant momentum/physics: drop straight down!
+			release_velocity = Vector2(0.0, 30.0)
 	else:
-		release_velocity = payload.linear_velocity + Vector2(0, 40.0)
+		if absf(payload.linear_velocity.x) > 40.0:
+			release_velocity = Vector2(payload.linear_velocity.x, maxf(payload.linear_velocity.y, 40.0))
+		else:
+			release_velocity = Vector2(0.0, maxf(payload.linear_velocity.y, 40.0))
 
 	released_ref.linear_velocity = release_velocity
 	released_ref.angular_velocity = swing_angular_velocity * (3.2 if payload_tier >= 2 else 2.4)
@@ -1375,11 +1452,110 @@ func _trigger_cargo_fling_juice(release_vel: Vector2) -> void:
 
 
 # ==============================================================================
+# CRANE, TROLLEY & PAYLOAD AUDIO SYSTEM
+# ==============================================================================
+func _init_crane_audio_players() -> void:
+	var sfx_bus: String = "SFX" if AudioServer.get_bus_index("SFX") != -1 else "Master"
+
+	# 1. Payload Catch Audio Player
+	_payload_catch_audio_player = AudioStreamPlayer2D.new()
+	_payload_catch_audio_player.name = "PayloadCatchPlayer"
+	_payload_catch_audio_player.bus = sfx_bus
+	_payload_catch_audio_player.volume_db = payload_catch_volume_db
+	_payload_catch_audio_player.max_distance = 3000.0
+	_payload_catch_audio_player.attenuation = 1.0
+
+	if payload_catch_audio:
+		_payload_catch_audio_player.stream = payload_catch_audio
+	elif ResourceLoader.exists("res://Sounds/PayloadCatch.wav"):
+		_payload_catch_audio_player.stream = load("res://Sounds/PayloadCatch.wav")
+
+	if payload:
+		payload.add_child(_payload_catch_audio_player)
+	else:
+		add_child(_payload_catch_audio_player)
+
+	# 2. Crane Turn Audio Player
+	_crane_turn_audio_player = AudioStreamPlayer2D.new()
+	_crane_turn_audio_player.name = "CraneTurnPlayer"
+	_crane_turn_audio_player.bus = sfx_bus
+	_crane_turn_audio_player.volume_db = crane_turn_volume_db
+	_crane_turn_audio_player.max_distance = 3500.0
+	_crane_turn_audio_player.attenuation = 1.0
+
+	if crane_turn_audio:
+		_crane_turn_audio_player.stream = crane_turn_audio
+	elif ResourceLoader.exists("res://Sounds/CraneTurn.wav"):
+		_crane_turn_audio_player.stream = load("res://Sounds/CraneTurn.wav")
+
+	if visuals:
+		visuals.add_child(_crane_turn_audio_player)
+	else:
+		add_child(_crane_turn_audio_player)
+
+	# 3. Trolley Move Audio Player
+	_trolley_move_audio_player = AudioStreamPlayer2D.new()
+	_trolley_move_audio_player.name = "TrolleyMovePlayer"
+	_trolley_move_audio_player.bus = sfx_bus
+	_trolley_move_audio_player.volume_db = trolley_move_volume_db
+	_trolley_move_audio_player.max_distance = 3000.0
+	_trolley_move_audio_player.attenuation = 1.0
+
+	if trolley_move_audio:
+		_trolley_move_audio_player.stream = trolley_move_audio
+	elif ResourceLoader.exists("res://Sounds/TrolleyMove.wav"):
+		_trolley_move_audio_player.stream = load("res://Sounds/TrolleyMove.wav")
+
+	# Enable looping for TrolleyMove so continuous movement remains seamless
+	if _trolley_move_audio_player.stream is AudioStreamWAV:
+		(_trolley_move_audio_player.stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+
+	_trolley_move_audio_player.finished.connect(func():
+		if is_trolley_actually_moving and not ButtonsController.is_esc_menu_open and not is_turning:
+			_trolley_move_audio_player.play()
+	)
+
+	if trolley_pivot:
+		trolley_pivot.add_child(_trolley_move_audio_player)
+	else:
+		add_child(_trolley_move_audio_player)
+
+
+func _play_payload_catch_sound() -> void:
+	if _payload_catch_audio_player and _payload_catch_audio_player.stream:
+		_payload_catch_audio_player.pitch_scale = randf_range(0.96, 1.04)
+		_payload_catch_audio_player.play()
+
+
+func _play_crane_turn_sound() -> void:
+	if _crane_turn_audio_player and _crane_turn_audio_player.stream:
+		_crane_turn_audio_player.pitch_scale = randf_range(0.97, 1.03)
+		_crane_turn_audio_player.play()
+
+
+func _play_trolley_move_sound() -> void:
+	if not _trolley_move_audio_player or not _trolley_move_audio_player.stream:
+		return
+	if ButtonsController.is_esc_menu_open or is_turning:
+		_stop_trolley_move_sound()
+		return
+	if not _trolley_move_audio_player.playing:
+		_trolley_move_audio_player.play()
+
+
+func _stop_trolley_move_sound() -> void:
+	if _trolley_move_audio_player and _trolley_move_audio_player.playing:
+		_trolley_move_audio_player.stop()
+
+
+# ==============================================================================
 # WATER INTERACTION, AUDIO & SCOOP SYSTEM
 # ==============================================================================
 func _init_water_audio_player() -> void:
+	var sfx_bus: String = "SFX" if AudioServer.get_bus_index("SFX") != -1 else "Master"
 	_water_audio_player = AudioStreamPlayer2D.new()
 	_water_audio_player.name = "WaterSplashPlayer"
+	_water_audio_player.bus = sfx_bus
 	_water_audio_player.volume_db = water_splash_volume_db
 	_water_audio_player.max_distance = 2500.0
 	_water_audio_player.attenuation = 1.0
@@ -1489,6 +1665,7 @@ func _check_water_interaction(delta: float) -> void:
 				is_descending = false
 
 				_play_water_splash_sound(payload.linear_velocity.length() + 80.0)
+				_play_payload_catch_sound()
 
 				# Play closed claw/hold animation so it holds water like a bucket
 				if payload_sprite and payload_sprite.sprite_frames:
@@ -1729,7 +1906,7 @@ func _handle_flip_input() -> void:
 		return
 	if just_released_cargo_this_frame:
 		return
-	if is_turning:
+	if ButtonsController.is_esc_menu_open or is_turning:
 		return
 
 	# Q: Turn Left (face left: -1), E: Turn Right (face right: 1)
@@ -1751,6 +1928,8 @@ func _handle_flip_input() -> void:
 func _start_turn() -> void:
 	is_turning = true
 	_is_turn_reversing = false
+	_stop_trolley_move_sound()
+	_play_crane_turn_sound()
 
 	# Apply massive turn swing impulse in the turn direction
 	var kick: float = turn_swing_kick_tier2 if payload_tier >= 2 else turn_swing_kick_tier1
@@ -1977,15 +2156,55 @@ func set_payload_tier(tier: int) -> void:
 		print("[Crane] Payload Tier 1 Standart (Trolley: ", trolley_speed, "px/s, Winch: ", rope_winch_speed, "px/s, Turn Kick: ", turn_swing_kick, ").")
 
 
-func upgrade_payload() -> bool:
-	if payload_tier >= 2:
-		return false
+func trigger_event_boost(duration: float = -1.0) -> void:
+	var boost_time: float = duration if duration > 0.0 else event_boost_duration
+	is_event_boost_active = true
+	_event_boost_timer = boost_time
 	set_payload_tier(2)
+
+	if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("better_catch"):
+		payload_sprite.play("better_catch")
+
+	if _rocket_visual:
+		_rocket_visual.set_firing(true)
+		_rocket_visual.flame_scale = 1.2
+
+	_play_event_boost_pickup_effect()
+	print("[Crane] ★ EVENT ROCK BOOST AKTİF! ", boost_time, " saniye boyunca çift roketli hızlandırma devrede.")
+
+
+func _end_event_boost() -> void:
+	is_event_boost_active = false
+	_event_boost_timer = 0.0
+	set_payload_tier(1)
+
+	if _rocket_visual:
+		_rocket_visual.set_firing(false)
+
+	if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
+		payload_sprite.play("default")
+
+	print("[Crane] Event Rock boost süresi tamamlandı. Standart hızlara ve animasyona dönüldü.")
+
+
+func _play_event_boost_pickup_effect() -> void:
+	_play_payload_catch_sound()
+	_trigger_pickup_screen_shake()
+
 	if payload_sprite:
 		var pop := create_tween()
 		pop.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		pop.tween_property(payload_sprite, "scale", payload_sprite.scale * 1.35, 0.15)
-		pop.tween_property(payload_sprite, "scale", payload_sprite.scale, 0.2)
+		pop.tween_property(payload_sprite, "scale", payload_sprite.scale * 1.35, 0.14)
+		pop.tween_property(payload_sprite, "scale", payload_sprite.scale, 0.20)
+
+	if payload:
+		var flash := create_tween()
+		flash.tween_property(payload, "modulate", Color(0.2, 1.8, 2.0, 1.0), 0.1)
+		flash.tween_property(payload, "modulate", Color.WHITE, 0.25)
+
+
+func upgrade_payload() -> bool:
+	trigger_event_boost(event_boost_duration)
 	return true
 
 
@@ -2054,10 +2273,12 @@ func _check_and_deposit_to_house() -> bool:
 
 	var houses := tree.get_nodes_in_group("house")
 	for h in houses:
-		if not is_instance_valid(h) or not (h is House):
+		if not is_instance_valid(h):
 			continue
-		var house := h as House
-		if house.is_destroyed or house.current_level >= house.max_level:
+		var house = h
+		if ("is_destroyed" in house and house.is_destroyed) or ("current_level" in house and "max_level" in house and house.current_level >= house.max_level):
+			continue
+		if not house.has_method("get_bounds"):
 			continue
 
 		var bounds: Dictionary = house.get_bounds()
@@ -2069,8 +2290,11 @@ func _check_and_deposit_to_house() -> bool:
 		if within_x and within_y:
 			var rock_to_consume: RigidBody2D = grabbed_body
 			_release_cargo()
-			_disintegrate_upgrade_rock(rock_to_consume)
-			house.upgrade()
+			if rock_to_consume.has_method("consume_for_house"):
+				rock_to_consume.consume_for_house(house)
+			else:
+				house.upgrade()
+				_disintegrate_upgrade_rock(rock_to_consume)
 			_update_house_upgrade_pointers()
 			_update_wall_pointer()
 			_update_factory_pointer()
@@ -2111,16 +2335,21 @@ func _monitor_free_upgrade_rock(rock: RigidBody2D) -> void:
 				return
 			var houses := tree.get_nodes_in_group("house")
 			for h in houses:
-				if not is_instance_valid(h) or not (h is House):
+				if not is_instance_valid(h):
 					continue
-				var house := h as House
-				if house.is_destroyed or house.current_level >= house.max_level:
+				var house = h
+				if ("is_destroyed" in house and house.is_destroyed) or ("current_level" in house and "max_level" in house and house.current_level >= house.max_level):
+					continue
+				if not house.has_method("get_bounds"):
 					continue
 				var bounds: Dictionary = house.get_bounds()
 				var pos := rock.global_position
-				if pos.x >= bounds.left - 20.0 and pos.x <= bounds.right + 20.0 and pos.y >= bounds.top - 35.0 and pos.y <= bounds.bottom:
-					house.upgrade()
-					_disintegrate_upgrade_rock(rock)
+				if pos.x >= bounds.left - 25.0 and pos.x <= bounds.right + 25.0 and pos.y >= bounds.top - 45.0 and pos.y <= bounds.bottom + 10.0:
+					if rock.has_method("consume_for_house"):
+						rock.consume_for_house(house)
+					else:
+						house.upgrade()
+						_disintegrate_upgrade_rock(rock)
 					print("[Crane] Düşen Upgrade Rock ", house.name, " evine çarptı ve evi yükseltti!")
 					return
 		)
@@ -2231,3 +2460,19 @@ func _trigger_hit_stop(duration_sec: float = -1.0) -> void:
 		tree.create_timer(dur, true, false, true).timeout.connect(func():
 			Engine.time_scale = 1.0
 		)
+
+
+## Toggles the aim cursor visibility on/off
+func toggle_aim_cursor() -> bool:
+	enable_aim_cursor = not enable_aim_cursor
+	if _aim_trajectory:
+		_aim_trajectory.show_cursor = enable_aim_cursor
+	print("[Crane] Aim cursor toggled: ", enable_aim_cursor)
+	return enable_aim_cursor
+
+
+## Sets the aim cursor enabled state
+func set_aim_cursor_enabled(enabled: bool) -> void:
+	enable_aim_cursor = enabled
+	if _aim_trajectory:
+		_aim_trajectory.show_cursor = enabled

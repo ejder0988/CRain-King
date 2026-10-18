@@ -16,6 +16,10 @@ signal wall_completed
 ## Texture sheet containing the 24 progressive wall sprites
 @export var wall_sheet: Texture2D = preload("res://Sprites/Crane/wallbuild.png")
 
+@export_group("Pointer Settings")
+## When true, the tutorial pointer bobs up and down; when false, it remains stationary
+@export var enable_pointer_movement: bool = false
+
 @onready var sprite: Sprite2D = get_node_or_null("Sprite2D")
 @onready var main_collision: CollisionShape2D = get_node_or_null("CollisionShape2D")
 @onready var drop_zone: Area2D = get_node_or_null("DropZone")
@@ -58,7 +62,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	if pointer and pointer.visible:
+	if enable_pointer_movement and pointer and pointer.visible:
 		var time := Time.get_ticks_msec() / 1000.0
 		var top_y: float = get_wall_top_y_local()
 		pointer.position.y = (top_y - 14.0) + sin(time * 5.0) * 3.0

@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://c8upgrad3r0ck"]
+
+[ext_resource type="Texture2D" uid="uid://bgd6fi6174m3f" path="res://Sprites/enderpearl.png" id="1_enderpearl"]
+[ext_resource type="Script" path="res://Scripts/upgrade_rock.gd" id="2_upgrade_script"]
+[ext_resource type="Shader" uid="uid://bdyxgi7lrtr1i" path="res://Shaders/outline.gdshader" id="3_outline"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pearl"]
+shader = ExtResource("3_outline")
+shader_parameter/line_color = Color(0, 0, 0, 1)
+shader_parameter/line_thickness = 1.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_pearl"]
+radius = 28.0
+
+[node name="UpgradeRock" type="RigidBody2D" groups=["cargo", "grabbable", "rock", "upgrade_rock"]]
+collision_layer = 2
+mass = 5.0
+contact_monitor = true
+max_contacts_reported = 4
+script = ExtResource("2_upgrade_script")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+material = SubResource("ShaderMaterial_pearl")
+scale = Vector2(4.5, 4.5)
+texture = ExtResource("1_enderpearl")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_pearl")

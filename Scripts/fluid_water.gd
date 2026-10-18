@@ -379,21 +379,16 @@ func _physics_process(delta: float) -> void:
 	var total_speed: float = 0.0
 	var active_particle_count: int = 0
 	var ps := PhysicsServer2D
+	var now_ms := Time.get_ticks_msec()
 
-	# Quarantine cleanup: Once payload-released water lands on the ground (Y >= 800) or settles, reintegrate it
+	# Quarantine cleanup: Erase expired records purely by timestamp (no invalid body_get_state calls)
 	if not _payload_released_particles.is_empty():
-		var now_ms := Time.get_ticks_msec()
-		var freed_rids: Array[RID] = []
+		var expired_rids: Array[RID] = []
 		for p_rid in _payload_released_particles.keys():
-			if not p_rid.is_valid():
-				freed_rids.append(p_rid)
-				continue
-			var trans: Transform2D = ps.body_get_state(p_rid, PhysicsServer2D.BODY_STATE_TRANSFORM)
-			if trans.origin.y >= 800.0 or (now_ms - _payload_released_particles[p_rid]) > 4000:
-				freed_rids.append(p_rid)
-		for f in freed_rids:
+			if (now_ms - _payload_released_particles[p_rid]) > 3500:
+				expired_rids.append(p_rid)
+		for f in expired_rids:
 			_payload_released_particles.erase(f)
-
 
 	for i in range(objects.size() - 1, -1, -1):
 		var item: Array = objects[i]
@@ -402,19 +397,36 @@ func _physics_process(delta: float) -> void:
 		var tier: int = item[2]
 		item[3] = float(item[3]) + delta
 
-		var trans: Transform2D = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		var trans_var = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		if trans_var == null:
+			objects.remove_at(i)
+			if _held_particles.has(object):
+				_held_particles.erase(object)
+			if _payload_released_particles.has(object):
+				_payload_released_particles.erase(object)
+			continue
+
+		var trans: Transform2D = trans_var
 		var world_pos := trans.origin
+
+		# Once payload-flung water lands on ground level (Y >= 800), lift quarantine
+		if _payload_released_particles.has(object):
+			if world_pos.y >= 800.0:
+				_payload_released_particles.erase(object)
 
 		# 1. Abyss kill check
 		if world_pos.y > kill_y:
 			objects.remove_at(i)
 			if _held_particles.has(object):
 				_held_particles.erase(object)
+			if _payload_released_particles.has(object):
+				_payload_released_particles.erase(object)
 			ps.free_rid(object)
 			RenderingServer.free_rid(img)
 			continue
 
-		var cur_v: Vector2 = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+		var vel_var = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+		var cur_v: Vector2 = vel_var if vel_var != null else Vector2.ZERO
 		var cur_speed := cur_v.length()
 
 		# 2. High-Velocity Splitting (Tsunami surge or violent catapulting breaks large sources into lively spray)
@@ -422,6 +434,8 @@ func _physics_process(delta: float) -> void:
 			objects.remove_at(i)
 			if _held_particles.has(object):
 				_held_particles.erase(object)
+			if _payload_released_particles.has(object):
+				_payload_released_particles.erase(object)
 			ps.free_rid(object)
 			RenderingServer.free_rid(img)
 			var off1 := Vector2(-12.0, randf_range(-6.0, 6.0))
@@ -433,6 +447,8 @@ func _physics_process(delta: float) -> void:
 			objects.remove_at(i)
 			if _held_particles.has(object):
 				_held_particles.erase(object)
+			if _payload_released_particles.has(object):
+				_payload_released_particles.erase(object)
 			ps.free_rid(object)
 			RenderingServer.free_rid(img)
 			var off1 := Vector2(-8.0, randf_range(-4.0, 4.0))
@@ -522,12 +538,20 @@ func _merge_dense_particles() -> void:
 		var object: RID = item[0]
 		if not object.is_valid():
 			continue
+		if _held_particles.has(object) or _payload_released_particles.has(object):
+			continue
 
-		var vel: Vector2 = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+		var vel_var = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+		if vel_var == null:
+			continue
+		var vel: Vector2 = vel_var
 		if vel.length() > 90.0:
 			continue # Only settled, calm water particles coalesce
 
-		var trans: Transform2D = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		var trans_var = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+		if trans_var == null:
+			continue
+		var trans: Transform2D = trans_var
 		var p: Vector2 = trans.origin
 		var cell_key := Vector2i(int(floor(p.x / cell_size)), int(floor(p.y / cell_size)))
 
@@ -554,16 +578,26 @@ func _merge_dense_particles() -> void:
 			if to_remove_set.has(idx0) or to_remove_set.has(idx1) or to_remove_set.has(idx2) or to_remove_set.has(idx3):
 				continue
 
-			var p0: Vector2 = (ps.body_get_state(objects[idx0][0], PhysicsServer2D.BODY_STATE_TRANSFORM) as Transform2D).origin
-			var p1: Vector2 = (ps.body_get_state(objects[idx1][0], PhysicsServer2D.BODY_STATE_TRANSFORM) as Transform2D).origin
-			var p2: Vector2 = (ps.body_get_state(objects[idx2][0], PhysicsServer2D.BODY_STATE_TRANSFORM) as Transform2D).origin
-			var p3: Vector2 = (ps.body_get_state(objects[idx3][0], PhysicsServer2D.BODY_STATE_TRANSFORM) as Transform2D).origin
+			var t0 = ps.body_get_state(objects[idx0][0], PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var t1 = ps.body_get_state(objects[idx1][0], PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var t2 = ps.body_get_state(objects[idx2][0], PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var t3 = ps.body_get_state(objects[idx3][0], PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if t0 == null or t1 == null or t2 == null or t3 == null:
+				continue
+			var p0: Vector2 = (t0 as Transform2D).origin
+			var p1: Vector2 = (t1 as Transform2D).origin
+			var p2: Vector2 = (t2 as Transform2D).origin
+			var p3: Vector2 = (t3 as Transform2D).origin
 			var avg_pos := (p0 + p1 + p2 + p3) * 0.25
 
-			var v0: Vector2 = ps.body_get_state(objects[idx0][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
-			var v1: Vector2 = ps.body_get_state(objects[idx1][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
-			var v2: Vector2 = ps.body_get_state(objects[idx2][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
-			var v3: Vector2 = ps.body_get_state(objects[idx3][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v0_var = ps.body_get_state(objects[idx0][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v1_var = ps.body_get_state(objects[idx1][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v2_var = ps.body_get_state(objects[idx2][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v3_var = ps.body_get_state(objects[idx3][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v0: Vector2 = v0_var if v0_var != null else Vector2.ZERO
+			var v1: Vector2 = v1_var if v1_var != null else Vector2.ZERO
+			var v2: Vector2 = v2_var if v2_var != null else Vector2.ZERO
+			var v3: Vector2 = v3_var if v3_var != null else Vector2.ZERO
 			var avg_vel := (v0 + v1 + v2 + v3) * 0.25
 
 			to_remove_set[idx0] = true
@@ -582,14 +616,22 @@ func _merge_dense_particles() -> void:
 			if to_remove_set.has(idx0) or to_remove_set.has(idx1) or to_remove_set.has(idx2):
 				continue
 
-			var p0: Vector2 = (ps.body_get_state(objects[idx0][0], PhysicsServer2D.BODY_STATE_TRANSFORM) as Transform2D).origin
-			var p1: Vector2 = (ps.body_get_state(objects[idx1][0], PhysicsServer2D.BODY_STATE_TRANSFORM) as Transform2D).origin
-			var p2: Vector2 = (ps.body_get_state(objects[idx2][0], PhysicsServer2D.BODY_STATE_TRANSFORM) as Transform2D).origin
+			var t0 = ps.body_get_state(objects[idx0][0], PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var t1 = ps.body_get_state(objects[idx1][0], PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var t2 = ps.body_get_state(objects[idx2][0], PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if t0 == null or t1 == null or t2 == null:
+				continue
+			var p0: Vector2 = (t0 as Transform2D).origin
+			var p1: Vector2 = (t1 as Transform2D).origin
+			var p2: Vector2 = (t2 as Transform2D).origin
 			var avg_pos := (p0 + p1 + p2) * 0.333333
 
-			var v0: Vector2 = ps.body_get_state(objects[idx0][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
-			var v1: Vector2 = ps.body_get_state(objects[idx1][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
-			var v2: Vector2 = ps.body_get_state(objects[idx2][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v0_var = ps.body_get_state(objects[idx0][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v1_var = ps.body_get_state(objects[idx1][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v2_var = ps.body_get_state(objects[idx2][0], PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+			var v0: Vector2 = v0_var if v0_var != null else Vector2.ZERO
+			var v1: Vector2 = v1_var if v1_var != null else Vector2.ZERO
+			var v2: Vector2 = v2_var if v2_var != null else Vector2.ZERO
 			var avg_vel := (v0 + v1 + v2) * 0.333333
 
 			to_remove_set[idx0] = true
@@ -610,6 +652,8 @@ func _merge_dense_particles() -> void:
 		var img: RID = item[1]
 		if _held_particles.has(obj):
 			_held_particles.erase(obj)
+		if _payload_released_particles.has(obj):
+			_payload_released_particles.erase(obj)
 		if obj.is_valid():
 			ps.free_rid(obj)
 		if img.is_valid():
@@ -748,6 +792,7 @@ func _exit_tree() -> void:
 			rs.free_rid(img)
 	objects.clear()
 	_held_particles.clear()
+	_payload_released_particles.clear()
 
 
 
@@ -776,7 +821,10 @@ func get_water_surface_y_in_range(min_x: float, max_x: float, min_count: int = 3
 		if obj.is_valid():
 			if _held_particles.has(obj) or _payload_released_particles.has(obj):
 				continue
-			var trans: Transform2D = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if trans_var == null:
+				continue
+			var trans: Transform2D = trans_var
 			var p: Vector2 = trans.origin
 			if p.x >= min_x and p.x <= max_x:
 				var tier: int = item[2]
@@ -800,7 +848,10 @@ func get_dense_water_surface_y(min_x: float, max_x: float, min_density: int = 4)
 		if obj.is_valid():
 			if _held_particles.has(obj) or _payload_released_particles.has(obj):
 				continue
-			var trans: Transform2D = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if trans_var == null:
+				continue
+			var trans: Transform2D = trans_var
 			var p: Vector2 = trans.origin
 			if p.x >= min_x and p.x <= max_x:
 				var tier: int = item[2]
@@ -828,7 +879,10 @@ func count_particles_in_rect(rect: Rect2) -> int:
 		if obj.is_valid():
 			if _held_particles.has(obj) or _payload_released_particles.has(obj):
 				continue
-			var trans: Transform2D = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if trans_var == null:
+				continue
+			var trans: Transform2D = trans_var
 			if rect.has_point(trans.origin):
 				var tier: int = item[2]
 				count += 1 if tier == WaterTier.SMALL else (5 if tier == WaterTier.MEDIUM else 16)
@@ -843,7 +897,10 @@ func count_particles_near(pos: Vector2, radius: float) -> int:
 	for item in objects:
 		var object: RID = item[0]
 		if object.is_valid():
-			var trans: Transform2D = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var trans_var = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if trans_var == null:
+				continue
+			var trans: Transform2D = trans_var
 			if pos.distance_to(trans.origin) < radius:
 				var tier: int = item[2]
 				count += 1 if tier == WaterTier.SMALL else (5 if tier == WaterTier.MEDIUM else 16)
@@ -861,7 +918,10 @@ func start_payload_water_grab(center: Vector2, radius: float = 75.0, force: floa
 	for item in objects:
 		var object: RID = item[0]
 		if object.is_valid():
-			var trans: Transform2D = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			var trans_var = ps.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if trans_var == null:
+				continue
+			var trans: Transform2D = trans_var
 			if center.distance_to(trans.origin) < radius:
 				ps.body_set_state(object, PhysicsServer2D.BODY_STATE_SLEEPING, false)
 				_held_particles.append(object)
@@ -891,6 +951,9 @@ func fling_held_water(launch_vel: Vector2) -> void:
 	var now_ms := Time.get_ticks_msec()
 	for obj in _held_particles:
 		if obj.is_valid():
+			var trans_check = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
+			if trans_check == null:
+				continue
 			_payload_released_particles[obj] = now_ms
 			var spread := Vector2(randf_range(-45.0, 45.0), randf_range(-45.0, 45.0))
 			ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_SLEEPING, false)
