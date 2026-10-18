@@ -241,15 +241,21 @@ func get_max_health() -> int:
 
 ## Ayakta kalan ve yıkılmamış aktif evlerin sayısını döndürür
 func get_standing_houses_count() -> int:
-	var count: int = 0
+	return get_standing_houses().size()
+
+
+## Ayakta kalan ve yıkılmamış aktif evlerin listesini döndürür
+func get_standing_houses() -> Array[StaticBody2D]:
+	var result: Array[StaticBody2D] = []
 	for h in _managed_houses:
 		if is_instance_valid(h):
 			if "is_destroyed" in h and h.is_destroyed:
 				continue
 			if "current_level" in h and h.current_level <= 0:
 				continue
-			count += 1
-	return count
+			result.append(h)
+	return result
+
 
 
 ## Tüm evler yıkıldığında veya oyuncunun canı bittiğinde tetiklenir

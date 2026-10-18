@@ -69,8 +69,8 @@ const PRESET_LIGHTNING := preload("res://addons/weather_fx_2d_lite/presets/light
 @export var enable_ground_collision: bool = true
 ## Multiplier for splash bounce droplet height and splash visibility on collision
 @export_range(0.5, 3.0, 0.1) var collision_bounce_intensity: float = 1.45
-## Optional second collision node (e.g. StoneWall) to also receive rain splashes
-@export var extra_collision_target: NodePath = NodePath("../StoneWall")
+## Optional second collision node (disabled by default so rain passes through StoneWall)
+@export var extra_collision_target: NodePath = NodePath("")
 
 @export_group("Controls & Debug UI")
 @export var enable_hotkeys: bool = true           ## 1: Downpour, 2: Night Storm, 3: Clear, L: Strike
@@ -291,6 +291,7 @@ func start_sweeping_rain(type: WeatherType = WeatherType.DOWNPOUR, sweep_duratio
 		mat.set_shader_parameter("splash_y", splash_y)
 		mat.set_shader_parameter("splash_depth", splash_depth)
 		mat.set_shader_parameter("alpha_mult", 1.0)
+		_apply_collision_texture_to_material()
 
 	# Smoothly fade in atmospheric tint as storm moves in
 	_transition_tint(target_tint, sweep_duration)
@@ -506,6 +507,7 @@ func _morph_rain_parameters(target_preset: ShaderMaterial, trans_time: float, sp
 	mat.set_shader_parameter("splash_y", target_splash_y)
 	mat.set_shader_parameter("splash_depth", splash_depth)
 	mat.set_shader_parameter("right_to_left_progress", 1.0)
+	_apply_collision_texture_to_material()
 
 
 func _configure_rain_material(splash_amt: float, s_y: float) -> void:
@@ -514,6 +516,7 @@ func _configure_rain_material(splash_amt: float, s_y: float) -> void:
 		mat.set_shader_parameter("splash_amount", splash_amt)
 		mat.set_shader_parameter("splash_y", s_y)
 		mat.set_shader_parameter("splash_depth", splash_depth)
+		_apply_collision_texture_to_material()
 
 
 func _prepare_lightning_layer() -> void:
@@ -727,3 +730,203 @@ func _update_hint_text() -> void:
 		tw.tween_interval(hint_auto_hide_time)
 		tw.tween_property(hint_badge, "modulate:a", 0.0, 1.2)
 		_hint_fade_tween = tw
+
+
+# ==============================================================================
+# GROUND COLLISION IMPACT PROFILE & HEIGHTMAP
+# ==============================================================================
+## Finds the primary ground collision node
+func get_ground_collision_node() -> Node2D:
+	if not ground_collision_target.is_empty():
+		var node = get_node_or_null(ground_collision_target)
+		if node is Node2D:
+			return node
+	if get_parent():
+		var found = get_parent().find_child("GroundCollions", true, false)
+		if found is Node2D:
+			return found
+	if is_inside_tree() and get_tree().current_scene:
+		var found = get_tree().current_scene.find_child("GroundCollions", true, false)
+		if found is Node2D:
+			return found
+	return null
+
+
+## Extracts all collision segments from assigned targets and groups
+func _collect_collision_segments() -> Array[Array]:
+	var segments: Array[Array] = []
+	var targets: Array[Node2D] = []
+
+	var main_target := get_ground_collision_node()
+	if main_target:
+		targets.append(main_target)
+
+	if not extra_collision_target.is_empty():
+		var extra = get_node_or_null(extra_collision_target)
+		if extra is Node2D and not targets.has(extra):
+			targets.append(extra)
+
+	if is_inside_tree():
+		for n in get_tree().get_nodes_in_group("ground_collision"):
+			if n is Node2D and not targets.has(n):
+				targets.append(n)
+
+	for target in targets:
+		_extract_segments_from_node(target, segments)
+
+	return segments
+
+
+func _extract_segments_from_node(node: Node, segments: Array[Array]) -> void:
+	if not node:
+		return
+
+	if node is CollisionShape2D:
+		var cs := node as CollisionShape2D
+		if cs.is_inside_tree() and cs.visible and not cs.disabled and cs.shape:
+			if cs.shape is SegmentShape2D:
+				var seg := cs.shape as SegmentShape2D
+				var a: Vector2 = cs.global_transform * seg.a
+				var b: Vector2 = cs.global_transform * seg.b
+				segments.append([a, b])
+			elif cs.shape is RectangleShape2D:
+				var rect := cs.shape as RectangleShape2D
+				var half := rect.size * 0.5
+				# Top edge of rectangle where rain lands
+				var a: Vector2 = cs.global_transform * Vector2(-half.x, -half.y)
+				var b: Vector2 = cs.global_transform * Vector2(half.x, -half.y)
+				segments.append([a, b])
+			elif cs.shape is CapsuleShape2D:
+				var cap := cs.shape as CapsuleShape2D
+				var a: Vector2 = cs.global_transform * Vector2(-cap.radius, -cap.height * 0.5)
+				var b: Vector2 = cs.global_transform * Vector2(cap.radius, -cap.height * 0.5)
+				segments.append([a, b])
+
+	elif node is CollisionPolygon2D:
+		var cp := node as CollisionPolygon2D
+		if cp.is_inside_tree() and cp.visible and not cp.disabled:
+			var pts := cp.polygon
+			var n_pts := pts.size()
+			for i in range(n_pts):
+				var a: Vector2 = cp.global_transform * pts[i]
+				var b: Vector2 = cp.global_transform * pts[(i + 1) % n_pts]
+				segments.append([a, b])
+
+	for child in node.get_children():
+		_extract_segments_from_node(child, segments)
+
+
+## Generates the ground collision heightmap texture from the collision shapes
+func build_ground_collision_profile(texture_width: int = 1024) -> void:
+	if not enable_ground_collision:
+		_ground_height_texture = null
+		_apply_collision_texture_to_material()
+		return
+
+	var segments := _collect_collision_segments()
+	if segments.is_empty():
+		print("[WeatherSystem] Ground collision segments not found; defaulting to flat splash_y.")
+		return
+
+	var vp_size := Vector2(1920.0, 1080.0)
+	if is_inside_tree() and get_viewport():
+		var visible_size := get_viewport().get_visible_rect().size
+		if visible_size.x > 0 and visible_size.y > 0:
+			vp_size = visible_size
+
+	var canvas_xform := Transform2D.IDENTITY
+	if is_inside_tree() and get_viewport():
+		canvas_xform = get_viewport().get_canvas_transform()
+
+	# Transform segments to viewport screen coordinates
+	var screen_segments: Array[Array] = []
+	for seg in segments:
+		var sa: Vector2 = canvas_xform * seg[0]
+		var sb: Vector2 = canvas_xform * seg[1]
+		screen_segments.append([sa, sb])
+
+	var width := texture_width
+	var heights: Array[float] = []
+	heights.resize(width)
+	var covered: Array[bool] = []
+	covered.resize(width)
+
+	for i in range(width):
+		heights[i] = splash_y
+		covered[i] = false
+
+	for seg in screen_segments:
+		var p1: Vector2 = seg[0]
+		var p2: Vector2 = seg[1]
+		var min_x: float = minf(p1.x, p2.x)
+		var max_x: float = maxf(p1.x, p2.x)
+		if max_x < 0.0 or min_x > vp_size.x:
+			continue
+		var dx := p2.x - p1.x
+		var start_idx := clampi(int(floorf((min_x / vp_size.x) * float(width))), 0, width - 1)
+		var end_idx := clampi(int(ceilf((max_x / vp_size.x) * float(width))), 0, width - 1)
+
+		for i in range(start_idx, end_idx + 1):
+			var u := (float(i) + 0.5) / float(width)
+			var sx := u * vp_size.x
+			var y_val: float
+			if absf(dx) < 0.001:
+				y_val = minf(p1.y, p2.y)
+			else:
+				var t := clampf((sx - p1.x) / dx, 0.0, 1.0)
+				y_val = p1.y + t * (p2.y - p1.y)
+
+			var norm_y: float = clampf(y_val / vp_size.y, 0.05, 0.98)
+			if not covered[i] or norm_y < heights[i]:
+				heights[i] = norm_y
+				covered[i] = true
+
+	# Fill gaps between segments
+	for i in range(width):
+		if not covered[i]:
+			var left_idx := -1
+			for l in range(i - 1, -1, -1):
+				if covered[l]:
+					left_idx = l
+					break
+			var right_idx := -1
+			for r in range(i + 1, width):
+				if covered[r]:
+					right_idx = r
+					break
+			if left_idx != -1 and right_idx != -1:
+				if (right_idx - left_idx) <= 90:
+					var factor := float(i - left_idx) / float(right_idx - left_idx)
+					heights[i] = lerpf(heights[left_idx], heights[right_idx], factor)
+				else:
+					heights[i] = splash_y
+			elif left_idx != -1 and (i - left_idx) <= 45:
+				heights[i] = heights[left_idx]
+			elif right_idx != -1 and (right_idx - i) <= 45:
+				heights[i] = heights[right_idx]
+			else:
+				heights[i] = splash_y
+
+	var img := Image.create(width, 1, false, Image.FORMAT_RGBA8)
+	for i in range(width):
+		var val: float = heights[i]
+		img.set_pixel(i, 0, Color(val, val, val, 1.0))
+
+	if _ground_height_texture:
+		_ground_height_texture.set_image(img)
+	else:
+		_ground_height_texture = ImageTexture.create_from_image(img)
+
+	print("[WeatherSystem] Ground collision profile generated from %d segments! Rain will hit foreground collision." % segments.size())
+	_apply_collision_texture_to_material()
+
+
+func _apply_collision_texture_to_material() -> void:
+	if not rain_layer:
+		return
+	var mat := rain_layer.material as ShaderMaterial
+	if mat and _ground_height_texture:
+		mat.set_shader_parameter("ground_height_texture", _ground_height_texture)
+		mat.set_shader_parameter("use_collision_height", enable_ground_collision)
+		mat.set_shader_parameter("collision_bounce_intensity", collision_bounce_intensity)
+

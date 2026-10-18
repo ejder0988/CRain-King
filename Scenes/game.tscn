@@ -40,6 +40,12 @@
 [ext_resource type="AudioStream" uid="uid://bx33i2jxr3uv1" path="res://Sounds/Gülme1.wav" id="37_bwj6o"]
 [ext_resource type="AudioStream" uid="uid://c5im18dijqqwp" path="res://Sounds/Gülme2.wav" id="38_f3c8l"]
 [ext_resource type="AudioStream" uid="uid://d2bkhk46h1wdo" path="res://Sounds/Gülme3.wav" id="39_bu0y5"]
+[ext_resource type="Texture2D" uid="uid://dicvgvpixyk36" path="res://Sprites/yanardag.png" id="41_f3c8l"]
+[ext_resource type="Shader" uid="uid://ddb8xl7fkrmnm" path="res://Shaders/Transition.gdshader" id="42_v2cs8"]
+[ext_resource type="Texture2D" uid="uid://boltmrnbutdo1" path="res://Sprites/TransitionBox.png" id="43_32sfa"]
+[ext_resource type="Shader" uid="uid://bbdvc1s8thhwx" path="res://Shaders/inverse.gdshader" id="44_titue"]
+[ext_resource type="Texture2D" uid="uid://bjmdm63pidqg6" path="res://Sprites/finish.png" id="45_v2cs8"]
+[ext_resource type="Texture2D" uid="uid://dw5u45roadeb7" path="res://Sprites/logo_outline.png" id="46_htg8p"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_oeip8"]
 atlas = ExtResource("17_ewbju")
@@ -96,7 +102,7 @@ region = Rect2(101, 14, 22, 50)
 atlas = ExtResource("25_22asu")
 region = Rect2(133, 3, 22, 61)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_ym3tv"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_v2cs8"]
 size = Vector2(17.617035, 11.23407)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_8lpvs"]
@@ -142,10 +148,10 @@ animations = [{
 "speed": 10.0
 }]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_bwj6o"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_32sfa"]
 size = Vector2(17.617035, 10.97876)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_f3c8l"]
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_titue"]
 size = Vector2(17.617035, 10.97876)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_mucmn"]
@@ -331,7 +337,7 @@ a = Vector2(23.489365, 35.48935)
 b = Vector2(-29.1064, 15.574448)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_yf5fn"]
-a = Vector2(10.978729, 4.0850983)
+a = Vector2(12.510651, -4.0850983)
 b = Vector2(42.127686, 7.9148865)
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_ym3tv"]
@@ -448,6 +454,57 @@ load_path = "res://.godot/imported/Buttons.png-f11c095f51e508b771de2ddf5043c23c.
 [sub_resource type="AtlasTexture" id="AtlasTexture_ckj55"]
 atlas = SubResource("CompressedTexture2D_xe308")
 region = Rect2(3, 113, 11, 14)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_aujhx"]
+atlas = ExtResource("41_f3c8l")
+region = Rect2(0, 0, 32, 144)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_k8ojv"]
+atlas = ExtResource("41_f3c8l")
+region = Rect2(32, 0, 32, 144)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_e6ols"]
+atlas = ExtResource("41_f3c8l")
+region = Rect2(64, 0, 32, 144)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2cns2"]
+atlas = ExtResource("41_f3c8l")
+region = Rect2(96, 0, 32, 144)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_b1mpw"]
+atlas = ExtResource("41_f3c8l")
+region = Rect2(128, 0, 32, 144)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_fcnqv"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_aujhx")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_k8ojv")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_e6ols")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_2cns2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_b1mpw")
+}],
+"loop": 0,
+"name": &"burst",
+"speed": 15.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_aujhx")
+}],
+"loop": 0,
+"name": &"default",
+"speed": 5.0
+}]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_base"]
 size = Vector2(160, 40)
@@ -669,8 +726,8 @@ animations = [{
 }]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_hook"]
-radius = 27.5
-height = 84.0
+radius = 34.5
+height = 92.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_g4v7s"]
 shader = ExtResource("15_nb51f")
@@ -680,12 +737,251 @@ shader_parameter/scroll_speed2 = Vector2(-0.015, -0.004)
 shader_parameter/center_pos = Vector2(0.5, 0)
 shader_parameter/position_impact = 0.75
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_jcvim"]
+shader = ExtResource("42_v2cs8")
+shader_parameter/mask = ExtResource("43_32sfa")
+shader_parameter/scale = 0.0
+shader_parameter/rotation_degrees = 75.000006482022
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_fnkle"]
+shader = ExtResource("44_titue")
+shader_parameter/cutoff = 0.5
+
+[sub_resource type="Animation" id="Animation_dd4i7"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("finish/Icon:visible")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [false]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("finish/Icon/Diamond:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(1.6, 1.6)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("finish/Icon:material:shader_parameter/cutoff")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.5]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("finish/Icon/Diamond:visible")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [true]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("finish/Icon:scale")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(2, 2)]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("finish:material:shader_parameter/scale")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+tracks/6/type = "value"
+tracks/6/imported = false
+tracks/6/enabled = true
+tracks/6/path = NodePath("finish:material:shader_parameter/rotation_degrees")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [75.000006482022]
+}
+tracks/7/type = "value"
+tracks/7/imported = false
+tracks/7/enabled = true
+tracks/7/path = NodePath("finish/Icon:position")
+tracks/7/interp = 1
+tracks/7/loop_wrap = true
+tracks/7/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(960, 540)]
+}
+tracks/8/type = "value"
+tracks/8/imported = false
+tracks/8/enabled = true
+tracks/8/path = NodePath("finish/Icon:rotation_degrees")
+tracks/8/interp = 1
+tracks/8/loop_wrap = true
+tracks/8/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+
+[sub_resource type="Animation" id="Animation_t537q"]
+resource_name = "start"
+length = 3.5
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("finish/Icon:visible")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.26666668),
+"transitions": PackedFloat32Array(1, 1),
+"update": 1,
+"values": [false, true]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("finish/Icon/Diamond:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.26666668, 0.73333335, 0.93333334),
+"transitions": PackedFloat32Array(1, 0.2871746, 0.65975386, 0.65975386),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, 0), Vector2(1.4, 1.4), Vector2(1, 1)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("finish/Icon:material:shader_parameter/cutoff")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 1.1, 2),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 0.0, 0.5]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("finish/Icon/Diamond:visible")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(),
+"transitions": PackedFloat32Array(),
+"update": 1,
+"values": []
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("finish/Icon:scale")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0, 1.95, 2.05, 2.25, 2.7, 2.8, 3.5),
+"transitions": PackedFloat32Array(1, 1, 0.5, 1, 0.5, 1, 1),
+"update": 0,
+"values": [Vector2(2, 2), Vector2(2, 2), Vector2(2.35, 2.35), Vector2(2, 2), Vector2(2.18, 2.18), Vector2(2, 2), Vector2(2, 2)]
+}
+tracks/5/type = "value"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("finish:material:shader_parameter/scale")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"times": PackedFloat32Array(0, 3.5),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [1.0, 1.0]
+}
+tracks/6/type = "value"
+tracks/6/imported = false
+tracks/6/enabled = true
+tracks/6/path = NodePath("finish:material:shader_parameter/rotation_degrees")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = {
+"times": PackedFloat32Array(0, 3.5),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [0.0, 0.0]
+}
+tracks/7/type = "value"
+tracks/7/imported = false
+tracks/7/enabled = true
+tracks/7/path = NodePath("finish/Icon:position")
+tracks/7/interp = 1
+tracks/7/loop_wrap = true
+tracks/7/keys = {
+"times": PackedFloat32Array(0, 2, 2.04, 2.08, 2.12, 2.16, 2.2, 2.25, 2.31, 2.38, 2.46, 2.55, 2.68, 2.72, 2.76, 2.81, 2.87, 2.94, 3.03, 3.14, 3.28, 3.5),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector2(960, 540), Vector2(960, 540), Vector2(976, 528), Vector2(942, 554), Vector2(974, 546), Vector2(948, 532), Vector2(968, 545), Vector2(953, 536), Vector2(966, 544), Vector2(956, 537), Vector2(963, 542), Vector2(958, 539), Vector2(960, 540), Vector2(973, 533), Vector2(948, 548), Vector2(969, 544), Vector2(954, 536), Vector2(964, 542), Vector2(957, 538), Vector2(962, 541), Vector2(960, 540), Vector2(960, 540)]
+}
+tracks/8/type = "value"
+tracks/8/imported = false
+tracks/8/enabled = true
+tracks/8/path = NodePath("finish/Icon:rotation_degrees")
+tracks/8/interp = 1
+tracks/8/loop_wrap = true
+tracks/8/keys = {
+"times": PackedFloat32Array(0, 2, 2.04, 2.08, 2.12, 2.16, 2.2, 2.28, 2.38, 2.5, 2.68, 2.72, 2.78, 2.85, 2.93, 3.05, 3.2, 3.5),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 0,
+"values": [0.0, 0.0, 2.6, -3.0, 2.2, -1.8, 1.4, -0.9, 0.5, -0.2, 0.0, 2.2, -2.4, 1.6, -0.8, 0.3, 0.0, 0.0]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_wr3wg"]
+_data = {
+&"RESET": SubResource("Animation_dd4i7"),
+&"start": SubResource("Animation_t537q")
+}
+
 [node name="game" type="Node2D" unique_id=1131706611]
 script = ExtResource("1_game")
+base_reward_per_house = 1
 
 [node name="GameMusicPlayer" type="AudioStreamPlayer" parent="." unique_id=987654330]
 stream = ExtResource("2_d3cha")
-pitch_scale = 0.42
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=987654321]
 position = Vector2(960, 540)
@@ -763,7 +1059,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House1" unique_id=819943257]
 position = Vector2(-0.12768555, 2.8085327)
-shape = SubResource("RectangleShape2D_ym3tv")
+shape = SubResource("RectangleShape2D_v2cs8")
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House1" unique_id=1111773724]
 texture = SubResource("AtlasTexture_j0obb")
@@ -791,7 +1087,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House2" unique_id=528198923]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_bwj6o")
+shape = SubResource("RectangleShape2D_32sfa")
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House2" unique_id=908321631]
 texture = SubResource("AtlasTexture_fh6x0")
@@ -819,7 +1115,7 @@ texture = ExtResource("11_d3cha")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Houses/House3" unique_id=625670738]
 position = Vector2(-0.12768555, 2.9361877)
-shape = SubResource("RectangleShape2D_f3c8l")
+shape = SubResource("RectangleShape2D_titue")
 
 [node name="Sprite2D" type="Sprite2D" parent="Houses/House3" unique_id=1131892629]
 texture = SubResource("AtlasTexture_j0obb")
@@ -884,11 +1180,11 @@ position = Vector2(-144.51064, 14.8084955)
 shape = SubResource("SegmentShape2D_bu0y5")
 
 [node name="CollisionShape2D42" type="CollisionShape2D" parent="GroundCollions" unique_id=121368059]
-position = Vector2(-137.87234, 44.170193)
+position = Vector2(-141.1915, 43.659554)
 shape = SubResource("SegmentShape2D_6a4tp")
 
 [node name="CollisionShape2D43" type="CollisionShape2D" parent="GroundCollions" unique_id=1008612638]
-position = Vector2(-156.25531, 43.65956)
+position = Vector2(-151.65956, 43.65956)
 shape = SubResource("SegmentShape2D_6a4tp")
 
 [node name="CollisionShape2D10" type="CollisionShape2D" parent="GroundCollions" unique_id=1426561982]
@@ -1102,6 +1398,12 @@ position = Vector2(235.00002, 75)
 scale = Vector2(3.5, 3.5)
 texture = SubResource("AtlasTexture_ckj55")
 
+[node name="volcano" type="AnimatedSprite2D" parent="." unique_id=1938473517]
+visible = false
+position = Vector2(1096, 332)
+scale = Vector2(3.7304654, 3.7304654)
+sprite_frames = SubResource("SpriteFrames_fcnqv")
+
 [node name="Crane" type="CharacterBody2D" parent="." unique_id=1565022501 node_paths=PackedStringArray("shake_sprite_1", "shake_sprite_2", "shake_sprite_3")]
 position = Vector2(991, 1016)
 script = ExtResource("3_crane")
@@ -1235,6 +1537,36 @@ initial_drops = 50
 [node name="StoneWall" parent="." unique_id=1987654321 instance=ExtResource("27_stonewall")]
 position = Vector2(1455, 771)
 scale = Vector2(2, 2)
-current_stage = 2
+current_stage = 3
+collision_height_per_stage = 9.0
 wall_build_sound = ExtResource("36_ym3tv")
 laugh_sounds = Array[AudioStream]([ExtResource("37_bwj6o"), ExtResource("38_f3c8l"), ExtResource("39_bu0y5")])
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1887833630]
+layer = 105
+
+[node name="finish" type="ColorRect" parent="CanvasLayer" unique_id=1375702307]
+visible = false
+material = SubResource("ShaderMaterial_jcvim")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 1)
+
+[node name="Icon" type="Sprite2D" parent="CanvasLayer/finish" unique_id=952423900]
+visible = false
+material = SubResource("ShaderMaterial_fnkle")
+position = Vector2(960, 540)
+scale = Vector2(2, 2)
+texture = ExtResource("45_v2cs8")
+
+[node name="Diamond" type="Sprite2D" parent="CanvasLayer/finish/Icon" unique_id=1244906599]
+position = Vector2(-5.9604645e-08, 5)
+scale = Vector2(1.6, 1.6)
+texture = ExtResource("46_htg8p")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="CanvasLayer/finish" unique_id=1730222993]
+root_node = NodePath("../..")
+libraries/ = SubResource("AnimationLibrary_wr3wg")

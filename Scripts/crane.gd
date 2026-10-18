@@ -225,11 +225,15 @@ var target_rope_length: float = 120.0 ## Target cable length (min_rope_length or
 var current_rope_length: float = 120.0 ## Instantaneous cable length
 var facing_direction: int = 1 ## 1: Right, -1: Left
 var is_turning: bool = false ## Input lock during turn animation
+var _turn_direction: int = 1 ## Direction crane is turning towards (-1: Left, 1: Right)
 var _is_turn_reversing: bool = false ## Tracks second half of flip turnaround
 var _trolley_tween: Tween = null ## Smooth 1-second tween to opposite side on turn
 
 var _shake_tweens: Array[Tween] = []
 var _shaking_sprites: Array[CanvasItem] = []
+var _shake_base_positions: Dictionary = {}
+var _earthquake_tweens: Array[Tween] = []
+var _is_earthquake_active: bool = false
 
 var prev_trolley_pos: Vector2 = Vector2.ZERO
 var trolley_velocity: Vector2 = Vector2.ZERO
@@ -339,6 +343,7 @@ func _get_rope_origin() -> Vector2:
 
 
 func _ready() -> void:
+	add_to_group("crane")
 	# Crane base is anchored to ground
 	velocity = Vector2.ZERO
 	
@@ -688,11 +693,11 @@ func _update_swing_oscillation(delta: float) -> void:
 		var active_inertia_scale: float = swing_inertia_tier2 if (is_event_boost_active or payload_tier >= 2) else swing_inertia_tier1
 		var inertial: float = (trolley_accel_x / eff_len) * cos(current_swing_angle) * active_inertia_scale
 
-		# 5. Continuous rotational whip torque during mast flip turn
+		# 5. Continuous rotational whip torque during mast flip turn (opposite to turn direction)
 		var turn_whip: float = 0.0
 		if is_turning:
 			var whip_power: float = turn_whip_power_tier2 if (is_event_boost_active or payload_tier >= 2) else turn_whip_power_tier1
-			var whip_dir: float = float(facing_direction) if not _is_turn_reversing else -float(facing_direction) * 0.7
+			var whip_dir: float = float(_turn_direction) if not _is_turn_reversing else -float(_turn_direction) * 0.4
 			turn_whip = whip_dir * whip_power
 
 		# 6. Event Rock / Rocket Thruster Swing Boost ("fiziğe dayalı olsa bile biraz daha güç ve hız katabilmeli")
@@ -2064,12 +2069,18 @@ func _handle_flip_input() -> void:
 func _start_turn() -> void:
 	is_turning = true
 	_is_turn_reversing = false
+	_turn_direction = -facing_direction
 	_stop_trolley_move_sound()
 	_play_crane_turn_sound()
 
-	# Apply massive turn swing impulse in the turn direction
+	# Dönüş anında ip TAM TERSİ tarafa savrulur:
+	# Sola dönüş (_turn_direction == -1) -> İp SAĞA savrulur (negatif açı/açısal hız).
+	# Sağa dönüş (_turn_direction == +1) -> İp SOLA savrulur (pozitif açı/açısal hız).
 	var kick: float = turn_swing_kick_tier2 if payload_tier >= 2 else turn_swing_kick_tier1
-	swing_angular_velocity += float(facing_direction) * kick
+	if signf(swing_angular_velocity) != signf(_turn_direction):
+		swing_angular_velocity = float(_turn_direction) * kick
+	else:
+		swing_angular_velocity += float(_turn_direction) * kick
 
 	# Smoothly tween trolley to the exact opposite position across mast within 0.38 second
 	if _trolley_tween and _trolley_tween.is_valid():
@@ -2107,8 +2118,8 @@ func _on_crane_body_animation_finished() -> void:
 		facing_direction *= -1
 		_apply_flip_state(float(facing_direction))
 		# Controlled swing impulse as the crane boom completes the turn
-		var phase2_kick: float = (turn_swing_kick_tier2 if payload_tier >= 2 else turn_swing_kick_tier1) * 0.6
-		swing_angular_velocity += -float(facing_direction) * phase2_kick
+		var phase2_kick: float = (turn_swing_kick_tier2 if payload_tier >= 2 else turn_swing_kick_tier1) * 0.4
+		swing_angular_velocity += -float(_turn_direction) * phase2_kick
 
 		if crane_body_sprite and crane_body_sprite.sprite_frames and crane_body_sprite.sprite_frames.has_animation("turn"):
 			var last_frame: int = crane_body_sprite.sprite_frames.get_frame_count("turn") - 1
@@ -2127,8 +2138,11 @@ func _run_procedural_turn() -> void:
 	if visuals:
 		tween.tween_property(visuals, "scale:x", 0.0, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tween.tween_callback(func():
+			_is_turn_reversing = true
 			facing_direction *= -1
 			_apply_flip_state(float(facing_direction))
+			var phase2_kick: float = (turn_swing_kick_tier2 if payload_tier >= 2 else turn_swing_kick_tier1) * 0.4
+			swing_angular_velocity += -float(_turn_direction) * phase2_kick
 		)
 		tween.tween_property(visuals, "scale:x", target_scale_x, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		tween.tween_callback(_on_turn_completed)
@@ -2307,23 +2321,25 @@ func add_shake_sprite(item: CanvasItem) -> void:
 	if _shaking_sprites.has(item):
 		return
 	_shaking_sprites.append(item)
+	var use_offset: bool = "offset" in item
+	_shake_base_positions[item] = item.offset if use_offset else item.position
 	_start_sprite_idle_shake(item, _shaking_sprites.size() - 1)
 
 
 func _start_sprite_idle_shake(target: CanvasItem, index: int) -> void:
-	if not is_instance_valid(target):
+	if not is_instance_valid(target) or _is_earthquake_active:
 		return
 
 	# If the item has an 'offset' property (Sprite2D, AnimatedSprite2D), animating offset
 	# prevents modifying 'position', keeping transforms and hierarchy 100% stable.
 	var use_offset: bool = "offset" in target
-	var base_vec: Vector2 = target.offset if use_offset else target.position
+	var base_vec: Vector2 = _shake_base_positions.get(target, target.offset if use_offset else target.position)
 	var prop_name: String = "offset" if use_offset else "position"
 
 	var tween: Tween = create_tween().set_loops()
 	_shake_tweens.append(tween)
 
-	# Phase desynchronization so the 3 sprites move organically rather than in robotic lockstep
+	# Phase desynchronization so the sprites move organically rather than in robotic lockstep
 	var phase: float = float(index) * 2.094 # ~120 degrees apart
 	var s1 := Vector2(cos(phase) * shake_amplitude.x * 0.75, sin(phase) * shake_amplitude.y * 0.85)
 	var s2 := Vector2(-sin(phase + 1.2) * shake_amplitude.x * 0.85, cos(phase + 0.9) * shake_amplitude.y * 0.7)
@@ -2338,6 +2354,59 @@ func _start_sprite_idle_shake(target: CanvasItem, index: int) -> void:
 	tween.tween_property(target, prop_name, base_vec + s3, step_dur * 0.95)
 	tween.tween_property(target, prop_name, base_vec + s4, step_dur * 1.1)
 	tween.tween_property(target, prop_name, base_vec, step_dur * 1.0)
+
+
+## Yanardağ patlaması ve deprem: idle shake sprite'larını (kara/dağ katmanları) çok şiddetli sallar, deprem bitince orijinal hallerine döndürür
+func trigger_earthquake_shake(duration: float = 4.0, intensity: float = 24.0) -> void:
+	_is_earthquake_active = true
+
+	# Mevcut sakin idle shake tween'lerini öldür
+	for tw in _shake_tweens:
+		if tw and tw.is_valid():
+			tw.kill()
+	_shake_tweens.clear()
+
+	for eq in _earthquake_tweens:
+		if eq and eq.is_valid():
+			eq.kill()
+	_earthquake_tweens.clear()
+
+	var steps: int = int(duration / 0.075)
+	var step_dur: float = duration / float(max(steps, 1))
+
+	for i in range(_shaking_sprites.size()):
+		var target: CanvasItem = _shaking_sprites[i]
+		if not is_instance_valid(target):
+			continue
+
+		var use_offset: bool = "offset" in target
+		var prop_name: String = "offset" if use_offset else "position"
+		var base_vec: Vector2 = _shake_base_positions.get(target, target.offset if use_offset else target.position)
+
+		var tw := create_tween()
+		_earthquake_tweens.append(tw)
+
+		for s in range(steps):
+			var progress: float = float(s) / float(steps)
+			var damp: float = pow(1.0 - progress, 0.7) # Başlangıçta çok şiddetli, zamanla sönümlenen deprem
+			var offset_vec := Vector2(
+				randf_range(-intensity, intensity) * damp,
+				randf_range(-intensity * 0.8, intensity * 0.8) * damp
+			)
+			tw.tween_property(target, prop_name, base_vec + offset_vec, step_dur).set_trans(Tween.TRANS_SINE)
+
+		# Deprem tamamlandığında pürüzsüzce başlangıç orijinal pozisyonuna geri dön!
+		tw.tween_property(target, prop_name, base_vec, 0.35).set_trans(Tween.TRANS_SINE)
+		var target_ref := target
+		var target_idx := i
+		tw.tween_callback(func():
+			if is_instance_valid(target_ref):
+				_is_earthquake_active = false
+				_start_sprite_idle_shake(target_ref, target_idx)
+		)
+
+	print("[Crane] 🌋 DEPREM SARSINTISI AKTİF! Idle shake sprite'ları şiddetle sallanıyor (Şiddet: %.1f px, Süre: %.1f saniye)." % [intensity, duration])
+
 
 
 # ==============================================================================

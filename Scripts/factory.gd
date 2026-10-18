@@ -48,8 +48,8 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 @export var guaranteed_first_brick: bool = true
 ## PackedScene for Event Rock (Enderpearl - 5s timer)
 @export var event_rock_scene: PackedScene = preload("res://Scenes/event_rock.tscn")
-## Probability of spawning an Event Rock (0.25 = 25%)
-@export_range(0.0, 1.0, 0.05) var event_rock_chance: float = 0.25
+## Probability of spawning an Event Rock (Fabrikadan sadece brick çıkması için 0.0)
+@export_range(0.0, 1.0, 0.05) var event_rock_chance: float = 0.0
 ## Global position where normal brick is spawned
 @export var spawn_position: Vector2 = Vector2(383, 862)
 
@@ -310,25 +310,9 @@ func _finish_production() -> void:
 	if animation_player and animation_player.has_animation("popout"):
 		animation_player.play("popout")
 
-	# İlk seferde kesinlikle Tuğla çıkar, sonraki seferlerde Event Rock olasılığı devreye girer
+	# Fabrikadan daima SADECE Tuğla (Brick) düşer, başka hiçbir nesne çıkamaz!
 	production_count += 1
-	var product_type: String = "brick"
-	if guaranteed_first_brick and production_count == 1:
-		product_type = "brick"
-		print("[Factory] İlk üretim: Kesin olarak Tuğla (Brick) üretildi!")
-	else:
-		var roll: float = randf()
-		if roll < event_rock_chance:
-			product_type = "event_rock"
-		else:
-			product_type = "brick"
-
-	var spawned_product: RigidBody2D = null
-
-	if product_type == "event_rock":
-		spawned_product = _instantiate_event_rock()
-	else:
-		spawned_product = _instantiate_brick()
+	var spawned_product: RigidBody2D = _instantiate_brick()
 
 	if spawned_product:
 		var target_parent: Node = get_tree().current_scene
@@ -341,25 +325,9 @@ func _finish_production() -> void:
 		if w and w.has_method("add_collision_exception"):
 			w.add_collision_exception(spawned_product)
 
-		if product_type == "event_rock" or product_type == "upgrade_rock":
-			if spawned_product.has_method("launch_arc"):
-				if "bounce_force" in spawned_product:
-					spawned_product.bounce_force = upgrade_rock_bounce_force
-				if "lifetime_min" in spawned_product:
-					spawned_product.lifetime_min = upgrade_rock_lifetime_min
-				if "lifetime_max" in spawned_product:
-					spawned_product.lifetime_max = upgrade_rock_lifetime_max
-				spawned_product.launch_arc(upgrade_rock_spawn_position, upgrade_rock_landing_position, upgrade_rock_launch_height, upgrade_rock_launch_duration)
-			else:
-				spawned_product.global_position = upgrade_rock_spawn_position
-
-			event_rock_spawned.emit(spawned_product, current_level)
-			print("[Factory] ★ UPGRADE ROCK (Enderpearl) fırlatıldı! Çıkış: ", upgrade_rock_spawn_position, " -> Hedef: ", upgrade_rock_landing_position)
-		else:
-			spawned_product.global_position = spawn_position
-			brick_spawned.emit(spawned_product, current_level)
-			print("[Factory] TUĞLA (Brick) üretildi ve çıktı! Konum: ", spawn_position)
-
+		spawned_product.global_position = spawn_position
+		brick_spawned.emit(spawned_product, current_level)
+		print("[Factory] TUĞLA (Brick) üretildi ve çıktı! Konum: ", spawn_position)
 		rock_spawned.emit(spawned_product, current_level)
 
 	production_finished.emit()

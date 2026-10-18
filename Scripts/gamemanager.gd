@@ -279,6 +279,7 @@ func _get_cheat_sheet_bbcode() -> String:
 	return (
 		"[color=#8899aa][i]Debug Aç/Kapa: [/i][b][color=#ffe082][F6][/color][/b]  |  [i]Paneli Gizle/Aç: [/i][b][color=#ffe082][F7][/color][/b][/color]\n\n" +
 		"[b][color=#4fc3f7]── HAVA & DOĞA TESTLERİ ──[/color][/b]\n" +
+		" [color=#ffe082][b][V / F8][/b][/color]  Yanardağ Patlaması, Deprem & Meteor\n" +
 		" [color=#ffe082][b][Y][/b][/color]    Tam Fırtına Sekansını Başlat\n" +
 		" [color=#ffe082][b][1][/b][/color]    Sağanak Yağış Modu (Gündüz)\n" +
 		" [color=#ffe082][b][2][/b][/color]    Gece Fırtınası Modu\n" +
@@ -286,11 +287,13 @@ func _get_cheat_sheet_bbcode() -> String:
 		" [color=#ffe082][b][L / F][/b][/color] Yıldırım / Şimşek Düşür\n\n" +
 		"[b][color=#81c784]── VİNÇ & DONANIM ──[/color][/b]\n" +
 		" [color=#ffe082][b][K][/b][/color]    Vinç Roket Hızlandırma (Event Boost 15s)\n" +
-		" [color=#ffe082][b][F8][/b][/color]   Test: Event Rock (Elmas - 5s) Oluştur\n" +
+		" [color=#ffe082][b][F8][/b][/color]   Test: Event Rock / Meteor Fırlat\n" +
 		" [color=#ffe082][b][F9][/b][/color]   Test: Para Ekle (+50$)\n\n" +
 		"[b][color=#ffb74d]── BİNALAR & SEVİYE SİSTEMİ ──[/color][/b]\n" +
 		" [color=#ffe082][b][H][/b][/color]    Test: Ev Seviyesini Yükselt (+1 Kat)\n" +
-		" [color=#ffe082][b][J][/b][/color]    Test: Eve Hasar Ver (-1 Kat Kır)\n\n" +
+		" [color=#ffe082][b][J][/b][/color]    Test: Eve Hasar Ver (-1 Kat Kır)\n" +
+		" [color=#ffe082][b][N][/b][/color]    Test: Taş Duvarı Yükselt (+1 Kademe)\n" +
+		" [color=#ffe082][b][M][/b][/color]    Test: Taş Duvarı Düşür (-1 Kademe)\n\n" +
 		"[b][color=#64b5f6]── SU FİZİĞİ & SİMÜLASYONU ──[/color][/b]\n" +
 		" [color=#ffe082][b][T][/b][/color]    Test: Sel / Taşkın Dalgasını Başlat\n" +
 		" [color=#ffe082][b][G][/b][/color]    Su Patlaması Ekle (150 Damla)\n" +
@@ -461,8 +464,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			trigger_debug_flood()
 
-		# Debug key: Press F8 to spawn an Event Rock (only if debug_mode is enabled)
-		if debug_mode and event.keycode == KEY_F8:
+		# Debug key: Press N to upgrade Stone Wall (+1 stage) (only if debug_mode is enabled)
+		if debug_mode and event.keycode == KEY_N:
+			get_viewport().set_input_as_handled()
+			debug_upgrade_wall()
+
+		# Debug key: Press M to downgrade Stone Wall (-1 stage) (only if debug_mode is enabled)
+		if debug_mode and event.keycode == KEY_M:
+			get_viewport().set_input_as_handled()
+			debug_downgrade_wall()
+
+		# Debug key: Press V or F8 to trigger volcano burst, earthquake and meteor landing (only if debug_mode is enabled)
+		if debug_mode and (event.keycode == KEY_V or event.keycode == KEY_F8):
 			get_viewport().set_input_as_handled()
 			_spawn_debug_event_rock()
 
@@ -483,6 +496,30 @@ func trigger_debug_flood() -> void:
 		return
 	if tree.current_scene and tree.current_scene.has_method("trigger_debug_flood"):
 		tree.current_scene.trigger_debug_flood()
+
+
+## Debug F6 aktifken N tuşu ile StoneWall seviyesini 1 artırır (+1 stage)
+func debug_upgrade_wall() -> void:
+	var tree := get_tree()
+	if not tree:
+		return
+	var wall = tree.get_first_node_in_group("stone_wall")
+	if not wall and tree.current_scene:
+		wall = tree.current_scene.find_child("StoneWall", true, false)
+	if wall and wall.has_method("debug_upgrade_wall"):
+		wall.debug_upgrade_wall()
+
+
+## Debug F6 aktifken M tuşu ile StoneWall seviyesini 1 düşürür (-1 stage)
+func debug_downgrade_wall() -> void:
+	var tree := get_tree()
+	if not tree:
+		return
+	var wall = tree.get_first_node_in_group("stone_wall")
+	if not wall and tree.current_scene:
+		wall = tree.current_scene.find_child("StoneWall", true, false)
+	if wall and wall.has_method("debug_downgrade_wall"):
+		wall.debug_downgrade_wall()
 
 
 func get_money() -> int:
@@ -513,10 +550,17 @@ func _spawn_debug_event_rock() -> void:
 	var tree := get_tree()
 	if not tree:
 		return
+
+	var game_ctrl = tree.get_first_node_in_group("game_controller")
+	if game_ctrl and game_ctrl.has_method("trigger_volcano_meteor_event"):
+		game_ctrl.trigger_volcano_meteor_event()
+		print("[GameManager] Debug [V / F8]: Yanardağ Patlaması, Büyük Deprem ve Meteor Tetiklendi!")
+		return
+
 	var factory = tree.get_first_node_in_group("factory")
 	if factory and factory.has_method("spawn_event_rock"):
 		factory.spawn_event_rock()
-		print("[GameManager] Debug F8: Fabrikada Event Rock oluşturuldu.")
+		print("[GameManager] Debug [F8]: Fabrikada Event Rock oluşturuldu.")
 		return
 
 	# Fallback direct spawn

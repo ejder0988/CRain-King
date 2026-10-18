@@ -13,6 +13,10 @@ signal wall_completed
 @export var max_stages: int = 24
 ## Current construction stage (0: not started, 1..24: layers built)
 @export var current_stage: int = 0
+## Duvarın başlangıç collision yüksekliği (piksel, Varsayılan: 5.0)
+@export var base_collision_height: float = 5.0
+## Her seviye / tuğla başına collision yüksekliğinin artış miktarı (piksel, Varsayılan: 5.0)
+@export var collision_height_per_stage: float = 5.0
 ## Texture sheet containing the 24 progressive wall sprites
 @export var wall_sheet: Texture2D = preload("res://Sprites/Crane/wallbuild.png")
 
@@ -92,14 +96,10 @@ func get_wall_top_y_local() -> float:
 	return 72.0 - h
 
 
-## Returns the current height of the wall in local pixels
-## Stage 0/1 starts at 1-pixel / single-brick row height and scales smoothly to 135px at stage 24
+## Returns the current height of the wall collision in local pixels
+## Starts at 5px (base_collision_height) and increases by 5px per stage (collision_height_per_stage)
 func get_wall_height_local() -> float:
-	if current_stage <= 0:
-		return 2.0  # 1-2 pixel foundation
-	var frame_idx: int = clampi(current_stage - 1, 0, 23)
-	# Stage 1 starts at 4.0px (single brick row), rising by ~5.7px per stage to 135.0px at Stage 24
-	return 4.0 + float(frame_idx) * (131.0 / 23.0)
+	return base_collision_height + float(current_stage) * collision_height_per_stage
 
 
 ## Returns the world top Y position of the wall
@@ -203,6 +203,33 @@ func place_brick(brick_body: Node2D) -> bool:
 		wall_completed.emit()
 		print("[StoneWall] TEBRİKLER! Duvar tamamen örüldü (24/24)! Şehir sulara karşı koruma altında!")
 
+	return true
+
+
+## Debug test: Duvar seviyesini 1 artırır (+1 stage)
+func debug_upgrade_wall() -> bool:
+	if current_stage >= max_stages:
+		print("[StoneWall] Duvar zaten maksimum seviyede (%d/%d)!" % [current_stage, max_stages])
+		return false
+	current_stage = clampi(current_stage + 1, 0, max_stages)
+	_update_wall_state(true)
+	stage_changed.emit(current_stage, max_stages)
+	_play_wall_build_audio()
+	print("[StoneWall] [DEBUG] Duvar seviyesi yükseltildi: %d/%d (Collision H: %.1f px)" % [current_stage, max_stages, get_wall_height_local()])
+	if current_stage >= max_stages:
+		wall_completed.emit()
+	return true
+
+
+## Debug test: Duvar seviyesini 1 düşürür (-1 stage)
+func debug_downgrade_wall() -> bool:
+	if current_stage <= 0:
+		print("[StoneWall] Duvar zaten temel / en alt seviyede (0/%d)!" % max_stages)
+		return false
+	current_stage = clampi(current_stage - 1, 0, max_stages)
+	_update_wall_state(true)
+	stage_changed.emit(current_stage, max_stages)
+	print("[StoneWall] [DEBUG] Duvar seviyesi düşürüldü: %d/%d (Collision H: %.1f px)" % [current_stage, max_stages, get_wall_height_local()])
 	return true
 
 

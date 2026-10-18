@@ -47,8 +47,8 @@ var _shape_large: CircleShape2D
 @export var particle_linear_damp: float = 0.3
 ## Drops are only destroyed if they fall into the abyss below this Y value
 @export var kill_y: float = 3000.0
-## Maximum particle limit (increased to 650 for expansive water mass)
-@export var max_particles: int = 650
+## Maximum particle limit (0 veya negatif = Sınırsız / Sahne maksimum su sınırı kaldırıldı)
+@export var max_particles: int = 0
 
 
 @export_group("Fluid Collision")
@@ -330,7 +330,7 @@ func spawn_initial_drops(count: int) -> void:
 	else:
 		# POINT MODE: Pour drops down from nozzle
 		for i in range(count):
-			if objects.size() >= max_particles:
+			if max_particles > 0 and objects.size() >= max_particles:
 				break
 			var offset := Vector2(randf() - 0.5, randf() - 0.5).normalized() * spawn_radius * randf()
 			var pos := global_position + offset
@@ -343,7 +343,7 @@ func spawn_initial_drops(count: int) -> void:
 
 ## Creates a physical water particle of the specified scale tier (0: Small, 1: Medium, 2: Large)
 func create_object(pos: Vector2, initial_vel: Vector2 = Vector2.ZERO, tier: int = WaterTier.SMALL) -> RID:
-	if objects.size() >= max_particles:
+	if max_particles > 0 and objects.size() >= max_particles:
 		return RID()
 
 	if not tex:
@@ -433,7 +433,7 @@ func _physics_process(delta: float) -> void:
 		while _rain_reservoir_timer >= _rain_reservoir_spawn_interval and _rain_reservoir_drops_to_spawn > 0:
 			_rain_reservoir_timer -= _rain_reservoir_spawn_interval
 			_rain_reservoir_drops_to_spawn -= 1
-			if objects.size() < max_particles:
+			if max_particles <= 0 or objects.size() < max_particles:
 				var rx: float = randf_range(1960.0, 2360.0)
 				var ry: float = randf_range(720.0, 830.0)
 				var rvel: Vector2 = Vector2(randf_range(-15.0, 15.0), randf_range(30.0, 90.0))
@@ -605,7 +605,7 @@ func _physics_process(delta: float) -> void:
 
 		# 3. High-Velocity Splitting (Yalnızca normal/sakin zamanlarda vinçten fırlatılan büyük su kütleleri için; tsunami sırasında parçalanma kesinlikle engellenir)
 		if _tsunami_phase == TsunamiPhase.IDLE:
-			if tier == WaterTier.LARGE and cur_speed > 520.0 and objects.size() < max_particles - 4:
+			if tier == WaterTier.LARGE and cur_speed > 520.0 and (max_particles <= 0 or objects.size() < max_particles - 4):
 				objects.remove_at(i)
 				if _held_particles.has(object):
 					_held_particles.erase(object)
@@ -618,7 +618,7 @@ func _physics_process(delta: float) -> void:
 				create_object(world_pos + off1, cur_v + Vector2(-15.0, -10.0), WaterTier.MEDIUM)
 				create_object(world_pos + off2, cur_v + Vector2(15.0, -10.0), WaterTier.MEDIUM)
 				continue
-			elif tier == WaterTier.MEDIUM and cur_speed > 620.0 and objects.size() < max_particles - 4:
+			elif tier == WaterTier.MEDIUM and cur_speed > 620.0 and (max_particles <= 0 or objects.size() < max_particles - 4):
 				objects.remove_at(i)
 				if _held_particles.has(object):
 					_held_particles.erase(object)
@@ -946,7 +946,7 @@ func start_rolling_wave(duration: float = 2.5, cycle_level: int = 1) -> void:
 	# Geçici dalga dolgunluk takviyesi (BACKWASH sırasında X > 1950'ye dönünce silinir)
 	var boost_count: int = mini(18 + _surge_cycle_level * 4, 50)
 	for b in range(boost_count):
-		if objects.size() >= max_particles:
+		if max_particles > 0 and objects.size() >= max_particles:
 			break
 		var bx: float = randf_range(2040.0, 2240.0)
 		var by: float = randf_range(810.0, 890.0)
@@ -1175,7 +1175,7 @@ func _update_pointer_visibility() -> void:
 
 func spawn_water_burst(amount: int = 15) -> void:
 	for i in range(amount):
-		if objects.size() >= max_particles:
+		if max_particles > 0 and objects.size() >= max_particles:
 			break
 		var offset := Vector2(randf() - 0.5, randf() - 0.5).normalized() * spawn_radius * randf()
 		var vel := Vector2(randf_range(-20, 20), randf_range(20, 80))

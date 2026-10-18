@@ -35,6 +35,7 @@ signal rock_dispensed(rock: RigidBody2D)
 
 var _is_on_cooldown: bool = false
 var _cooldown_timer: float = 0.0
+var _is_dispense_pending: bool = false
 var _original_sprite_scale: Vector2 = Vector2(3.0, 3.0)
 var _base_pointer_y: float = -72.0
 var has_mined_first_rock: bool = false
@@ -73,7 +74,7 @@ func _process(delta: float) -> void:
 
 
 func _check_crane_payload_proximity() -> void:
-	if _is_on_cooldown:
+	if _is_on_cooldown or _is_dispense_pending:
 		return
 
 	var tree := get_tree()
@@ -94,9 +95,18 @@ func _check_crane_payload_proximity() -> void:
 	var diff: Vector2 = payload.global_position - global_position
 	# Check if payload is lowered into the pit
 	if absf(diff.x) <= 80.0 and diff.y >= -60.0 and diff.y <= 65.0:
-		var rock := dispense_rock_to_crane(crane)
-		if rock and crane.has_method("pickup_cargo_direct"):
-			crane.pickup_cargo_direct(rock)
+		_dispense_to_crane(crane)
+
+
+func _dispense_to_crane(crane: Node) -> void:
+	_is_dispense_pending = false
+	if not is_instance_valid(crane) or _is_on_cooldown:
+		return
+	if ("is_carrying_cargo" in crane and crane.is_carrying_cargo) or ("is_carrying_water" in crane and crane.is_carrying_water):
+		return
+	var rock := dispense_rock_to_crane(crane)
+	if rock and crane.has_method("pickup_cargo_direct"):
+		crane.pickup_cargo_direct(rock)
 
 
 func _physics_process(delta: float) -> void:
@@ -180,11 +190,10 @@ func _on_pickup_area_body_entered(body: Node) -> void:
 	var crane = tree.get_first_node_in_group("crane")
 	var payload: Node2D = crane.get("payload") as Node2D if crane else null
 
-	if body == payload and not _is_on_cooldown:
+	if body == payload and not _is_on_cooldown and not _is_dispense_pending:
 		if ("is_carrying_cargo" in crane and not crane.is_carrying_cargo) and ("is_carrying_water" in crane and not crane.is_carrying_water):
-			var rock := dispense_rock_to_crane(crane)
-			if rock and crane.has_method("pickup_cargo_direct"):
-				crane.pickup_cargo_direct(rock)
+			_is_dispense_pending = true
+			_dispense_to_crane.call_deferred(crane)
 			return
 
 	# If another physical object (not water, not held cargo) enters the pit, immediately repel it!

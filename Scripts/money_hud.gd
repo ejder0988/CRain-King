@@ -156,3 +156,33 @@ func set_descended(descend: bool) -> void:
 	_slide_tween = create_tween()
 	_slide_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_slide_tween.tween_property(_panel, "position:y", target_y, slide_duration)
+
+
+## Sel sonrası uçan coinlerin hedef alacağı ekran koordinatını döndürür
+func get_coin_target_global_pos() -> Vector2:
+	if _coin_sprite and is_instance_valid(_coin_sprite):
+		return _coin_sprite.global_position
+	if _panel and is_instance_valid(_panel):
+		return _panel.global_position + Vector2(28.0, 21.0)
+	return normal_pos + Vector2(28.0, 21.0)
+
+
+## Coin ulaştığında ikon ve etiket üzerinde parıltılı hafif bir zıplama efekti yapar
+func pulse_coin_collected() -> void:
+	if _coin_sprite and is_instance_valid(_coin_sprite):
+		var ct := create_tween()
+		ct.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		ct.tween_property(_coin_sprite, "scale", Vector2(2.3, 2.3), 0.08)
+		ct.tween_property(_coin_sprite, "scale", Vector2(1.85, 1.85), 0.12)
+
+
+## Sol üstte duran para/coin panelini tamamen arkaplana alır ve gizler
+func send_to_background(hide_panel: bool = true) -> void:
+	layer = 0
+	if _panel and is_instance_valid(_panel):
+		if hide_panel:
+			_panel.visible = false
+		else:
+			_panel.modulate.a = 0.25
+
+

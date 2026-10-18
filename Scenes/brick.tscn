@@ -1,6 +1,5 @@
 [gd_scene format=3 uid="uid://c7t8br1ckscne"]
 
-[ext_resource type="Texture2D" uid="uid://bwypv5m7q2sqs" path="res://Sprites/brick.png" id="1_brick"]
 [ext_resource type="Script" uid="uid://cmdcrpkdfhtbh" path="res://Scripts/brick.gd" id="2_brick_script"]
 [ext_resource type="Shader" uid="uid://bdyxgi7lrtr1i" path="res://Shaders/outline.gdshader" id="2_f8nvr"]
 
@@ -9,11 +8,15 @@ shader = ExtResource("2_f8nvr")
 shader_parameter/line_color = Color(0, 0, 0, 1)
 shader_parameter/line_thickness = 1.0
 
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_hqb1c"]
+load_path = "res://.godot/imported/brick.png-b95ec73c70364c1639d7f6bb53031bf8.ctex"
+
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_brick"]
 size = Vector2(72, 72)
 
 [node name="Brick" type="RigidBody2D" unique_id=720517401 groups=["brick", "cargo", "grabbable"]]
-collision_layer = 2
+collision_layer = 10
+collision_mask = 17
 mass = 5.0
 contact_monitor = true
 max_contacts_reported = 4
@@ -22,7 +25,7 @@ script = ExtResource("2_brick_script")
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1389333192]
 material = SubResource("ShaderMaterial_mucmn")
 scale = Vector2(4.5, 4.5)
-texture = ExtResource("1_brick")
+texture = SubResource("CompressedTexture2D_hqb1c")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1295800743]
 shape = SubResource("RectangleShape2D_brick")

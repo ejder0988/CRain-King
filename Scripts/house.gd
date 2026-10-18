@@ -722,23 +722,40 @@ func _create_or_update_label() -> void:
 			_level_label.name = "LevelLabel"
 			_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			_level_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			_level_label.add_theme_font_size_override("font_size", 10)
+			_level_label.add_theme_font_size_override("font_size", 9)
+			_level_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45, 1.0))
+			_level_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.05, 0.95))
+			_level_label.add_theme_constant_override("outline_size", 4)
+			_level_label.size = Vector2(40.0, 14.0)
+			_level_label.pivot_offset = Vector2(20.0, 7.0)
 			add_child(_level_label)
 
 	_level_label.text = "Lv.%d" % current_level
-	_level_label.modulate = Color(1.0, 0.9, 0.4, 0.95)
 
-	var col := _get_col_shape()
-	var top_y: float = -12.0
-	if col and col.shape is RectangleShape2D:
-		var rect := col.shape as RectangleShape2D
-		top_y = col.position.y - (rect.size.y * 0.5) - 12.0
+	# Evin gerçek çatı (en üst) noktasını sprite ve collision yüksekliklerine göre tam olarak hesapla
+	var s := _get_sprite()
+	var roof_local_y: float = -15.0
+
+	if s and s.texture:
+		var tex_h: float = s.texture.get_size().y
+		# Sprite2D merkezde olduğu için üst kenar: position.y + offset.y - (tex_h * 0.5 * scale.y)
+		var sprite_top: float = s.position.y + s.offset.y - (tex_h * 0.5 * s.scale.y)
+		roof_local_y = sprite_top
 	else:
-		top_y = -float(current_level) * get_floor_height() - 12.0
+		var col := _get_col_shape()
+		if col and col.shape is RectangleShape2D:
+			var rect := col.shape as RectangleShape2D
+			var col_floor_h := rect.size.y
+			var total_h: float = float(current_level) * col_floor_h
+			var bottom_y: float = _base_collision_pos.y + (col_floor_h * 0.5)
+			roof_local_y = bottom_y - total_h
+		else:
+			roof_local_y = -float(current_level) * get_floor_height()
 
-	_level_label.position = Vector2(-20.0, top_y)
-	_level_label.size = Vector2(40.0, 14.0)
-	_level_label.visible = show_level_label and (current_level > 0)
+	# Label'ı evin tam çatısının 12 piksel üzerine ortala
+	_level_label.position = Vector2(-20.0, roof_local_y - 14.0)
+	_level_label.visible = show_level_label and (current_level > 0) and not is_destroyed
+
 
 
 func _unhandled_input(event: InputEvent) -> void:
