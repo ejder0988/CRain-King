@@ -119,7 +119,7 @@ var _event_boost_timer: float = 0.0
 ## Custom audio file for trolley moving along the boom (default: res://Sounds/TrolleyMove.wav)
 @export var trolley_move_audio: AudioStream = null
 ## Volume (dB) for trolley move sound
-@export var trolley_move_volume_db: float = -2.0
+@export var trolley_move_volume_db: float = 0.0
 
 @export_group("Water Interaction & Audio")
 ## Enable payload physical interaction and scooping with fluid water
@@ -247,7 +247,7 @@ var _water_splash_cooldown: float = 0.0
 
 var _payload_catch_audio_player: AudioStreamPlayer2D = null
 var _crane_turn_audio_player: AudioStreamPlayer2D = null
-var _trolley_move_audio_player: AudioStreamPlayer2D = null
+var _trolley_move_audio_player: AudioStreamPlayer = null
 
 var is_descending: bool = false ## True when lowering winch with catch sequence
 var has_resolved_landing: bool = false ## True once ground/cargo landing has resolved
@@ -402,8 +402,15 @@ func _ready() -> void:
 	if payload_sprite:
 		if not payload_sprite.animation_finished.is_connected(_on_payload_animation_finished):
 			payload_sprite.animation_finished.connect(_on_payload_animation_finished)
-		if payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
-			payload_sprite.play("default")
+		if payload_sprite.sprite_frames:
+			if payload_sprite.sprite_frames.has_animation("catch"):
+				payload_sprite.sprite_frames.set_animation_loop("catch", true)
+			if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
+				payload_sprite.play("better_catch")
+			elif payload_sprite.sprite_frames.has_animation("catch"):
+				payload_sprite.play("catch")
+			elif payload_sprite.sprite_frames.has_animation("default"):
+				payload_sprite.play("default")
 
 	# Crane body AnimatedSprite2D signal connections & default animation
 	if crane_body_sprite:
@@ -449,7 +456,7 @@ func _physics_process(delta: float) -> void:
 	# 1. Cable trolley moves back and forth along the boom (carrying cargo anywhere player wants)
 	_handle_trolley_movement(delta)
 
-	# Manage temporary Event Rock rocket boost
+	# Manage temporary Event Rock / Upgrade Rock rocket boost
 	if is_event_boost_active:
 		_event_boost_timer -= delta
 		if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("better_catch"):
@@ -457,10 +464,15 @@ func _physics_process(delta: float) -> void:
 				payload_sprite.play("better_catch")
 		if _rocket_visual:
 			_rocket_visual.set_firing(true)
-			_rocket_visual.flame_scale = 1.45 if (is_descending or absf(trolley_velocity) > 60.0) else 1.0
+			_rocket_visual.flame_scale = 1.45 if (is_descending or trolley_velocity.length() > 60.0) else 1.0
 
 		if _event_boost_timer <= 0.0:
 			_end_event_boost()
+	else:
+		# Upgrade rock olmadığında olacak olan animasyon catch (cargo taşımıyorsa)
+		if not is_carrying_cargo and not is_carrying_water and payload_sprite and payload_sprite.sprite_frames:
+			if payload_sprite.animation != &"catch" and payload_sprite.sprite_frames.has_animation("catch"):
+				payload_sprite.play("catch")
 
 	# Handle payload tier upgrade input (K key) - Debug only: triggers temporary boost
 	var gm = get_node_or_null("/root/GameManager")
@@ -816,8 +828,13 @@ func _check_target_lockon(aim_dir: Vector2) -> Node2D:
 	# If carrying upgrade rock -> aim directly at nearest upgradeable House
 	# If carrying rock -> aim directly at Factory
 	if is_carrying_cargo and grabbed_body and is_instance_valid(grabbed_body):
-		if grabbed_body.is_in_group("brick"):
+		if grabbed_body.is_in_group("brick") or grabbed_body.is_in_group("upgrade_rock"):
+			# Tuğla taşırken: Taş duvara veya yükseltilebilir eve doğru nişan almayı destekle
 			var wall = tree.get_first_node_in_group("stone_wall")
+			var deposit_target: Node2D = null
+			var best_proj: float = 999999.0
+
+			# 1. Taş Duvar adayı
 			if wall and is_instance_valid(wall) and wall.has_method("get_wall_top_y_local"):
 				if "current_stage" in wall and "max_stages" in wall and wall.current_stage < wall.max_stages:
 					var wall_target_pos := Vector2(wall.global_position.x, wall.global_position.y + wall.get_wall_top_y_local() * wall.scale.y)
@@ -826,11 +843,11 @@ func _check_target_lockon(aim_dir: Vector2) -> Node2D:
 					if proj > 60.0 and proj <= max_reach + 80.0:
 						var perp: float = (to_wall - aim_dir * proj).length()
 						if perp < 85.0 * wall.scale.x:
-							return wall
-		elif grabbed_body.is_in_group("upgrade_rock"):
+							deposit_target = wall
+							best_proj = proj
+
+			# 2. Ev adayları
 			var houses := tree.get_nodes_in_group("house")
-			var best_house = null
-			var best_proj: float = 999999.0
 			for h in houses:
 				if not is_instance_valid(h):
 					continue
@@ -848,9 +865,10 @@ func _check_target_lockon(aim_dir: Vector2) -> Node2D:
 					if perp < 75.0:
 						if proj < best_proj:
 							best_proj = proj
-							best_house = house
-			if best_house:
-				return best_house
+							deposit_target = house
+
+			if deposit_target:
+				return deposit_target
 		elif grabbed_body.is_in_group("rock"):
 			var factory = tree.get_first_node_in_group("factory")
 			if not factory and tree.current_scene:
@@ -957,7 +975,7 @@ func _update_deployed_trajectory(delta: float) -> void:
 		# Tier 2 / Boosted: ROCKET-POWERED GUIDED HOOK
 		if _rocket_visual:
 			_rocket_visual.set_firing(true)
-			_rocket_visual.flame_scale = 1.45 if (is_descending or absf(trolley_velocity) > 60.0) else 1.0
+			_rocket_visual.flame_scale = 1.45 if (is_descending or trolley_velocity.length() > 60.0) else 1.0
 
 		# 1. Active Rocket Guidance towards target if locked or nearby
 		if locked_target_node and is_instance_valid(locked_target_node):
@@ -1031,11 +1049,10 @@ func _update_deployed_trajectory(delta: float) -> void:
 		if _aim_trajectory:
 			_aim_trajectory.play_reset_pop()
 
-		# When returning to top, ensure default animation is playing (unless boosted!)
+		# When returning to top, ensure catch is playing unless boosted
 		if not is_event_boost_active:
-			if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
-				if payload_sprite.animation == &"catch_start" or payload_sprite.animation == &"catch_loop" or payload_sprite.animation == &"better_catch":
-					payload_sprite.play("default")
+			if not is_carrying_cargo and not is_carrying_water and payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("catch"):
+				payload_sprite.play("catch")
 		else:
 			if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("better_catch"):
 				payload_sprite.play("better_catch")
@@ -1144,18 +1161,18 @@ func _start_payload_descent() -> void:
 			payload_sprite.play("hold")
 	else:
 		has_caught_object = false
-		if payload_tier >= 2:
-			# Tier 2: 2. seviye için sadece better_catch animasyonu oynasın!
+		if is_event_boost_active or payload_tier >= 2:
+			# Boosted: better_catch animasyonu
 			if payload_sprite.sprite_frames.has_animation("better_catch"):
 				payload_sprite.play("better_catch")
 			elif payload_sprite.sprite_frames.has_animation("catch"):
 				payload_sprite.play("catch")
 		else:
-			# Tier 1: Standart catch sequence
-			if payload_sprite.sprite_frames.has_animation("catch_start"):
-				payload_sprite.play("catch_start")
-			elif payload_sprite.sprite_frames.has_animation("catch"):
+			# Normal / unboosted: catch animasyonu
+			if payload_sprite.sprite_frames.has_animation("catch"):
 				payload_sprite.play("catch")
+			elif payload_sprite.sprite_frames.has_animation("default"):
+				payload_sprite.play("default")
 
 
 func _check_payload_descent_contact() -> void:
@@ -1186,7 +1203,7 @@ func _resolve_landing() -> void:
 		return
 	has_resolved_landing = true
 	is_descending = false
-	if _rocket_visual:
+	if not is_event_boost_active and _rocket_visual:
 		_rocket_visual.set_firing(false)
 
 	# CASE A: Currently carrying cargo and lowered onto surface -> Release/Deposit cargo
@@ -1230,6 +1247,31 @@ func _resolve_landing() -> void:
 	if caught:
 		grabbed_body = _find_touching_grabbable_body()
 		if grabbed_body:
+			# Check if caught body is an Event Rock or Upgrade Rock! Consumes it for rocket boost
+			if grabbed_body.is_in_group("event_rock") or grabbed_body.is_in_group("upgrade_rock") or grabbed_body.get_meta("is_event_rock", false) or grabbed_body.get_meta("is_upgrade_rock", false):
+				var rock_to_consume = grabbed_body
+				grabbed_body = null
+				is_carrying_cargo = false
+				can_release_cargo = false
+				is_descending = false
+				has_resolved_landing = true
+
+				if rock_to_consume.has_method("consume"):
+					rock_to_consume.consume()
+				else:
+					rock_to_consume.queue_free()
+
+				trigger_event_boost(event_boost_duration)
+
+				if auto_retract_after_landing and is_inside_tree():
+					var tree := get_tree()
+					if tree:
+						tree.create_timer(0.08).timeout.connect(func():
+							if not is_at_top:
+								target_rope_length = min_rope_length
+						)
+				return
+
 			is_carrying_cargo = true
 			can_release_cargo = false
 			grabbed_body.set_deferred("freeze", true)
@@ -1248,8 +1290,12 @@ func _resolve_landing() -> void:
 		has_resolved_landing = true
 		target_rope_length = current_rope_length
 
-		if payload_sprite.sprite_frames.has_animation("hold"):
+		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
+			payload_sprite.play("better_catch")
+		elif is_carrying_cargo and payload_sprite.sprite_frames.has_animation("hold"):
 			payload_sprite.play("hold")
+		elif payload_sprite.sprite_frames.has_animation("catch"):
+			payload_sprite.play("catch")
 		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 
@@ -1262,7 +1308,11 @@ func _resolve_landing() -> void:
 						target_rope_length = min_rope_length
 				)
 	else:
-		if payload_sprite.sprite_frames.has_animation("default"):
+		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
+			payload_sprite.play("better_catch")
+		elif payload_sprite.sprite_frames.has_animation("catch"):
+			payload_sprite.play("catch")
+		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 		if auto_retract_after_landing and is_inside_tree():
 			var tree := get_tree()
@@ -1279,6 +1329,21 @@ func pickup_cargo_direct(cargo: RigidBody2D) -> bool:
 		return false
 	if is_carrying_cargo or is_carrying_water:
 		return false
+
+	if cargo.is_in_group("event_rock") or cargo.is_in_group("upgrade_rock") or cargo.get_meta("is_event_rock", false) or cargo.get_meta("is_upgrade_rock", false):
+		if cargo.has_method("consume"):
+			cargo.consume()
+		else:
+			cargo.queue_free()
+		trigger_event_boost(event_boost_duration)
+		if auto_retract_after_landing and is_inside_tree():
+			var tree := get_tree()
+			if tree:
+				tree.create_timer(0.08).timeout.connect(func():
+					if not is_at_top:
+						target_rope_length = min_rope_length
+				)
+		return true
 
 	grabbed_body = cargo
 	is_carrying_cargo = true
@@ -1298,8 +1363,12 @@ func pickup_cargo_direct(cargo: RigidBody2D) -> bool:
 	_update_factory_pointer()
 
 	if payload_sprite and payload_sprite.sprite_frames:
-		if payload_sprite.sprite_frames.has_animation("hold"):
+		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
+			payload_sprite.play("better_catch")
+		elif payload_sprite.sprite_frames.has_animation("hold"):
 			payload_sprite.play("hold")
+		elif payload_sprite.sprite_frames.has_animation("catch"):
+			payload_sprite.play("catch")
 		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 
@@ -1409,7 +1478,7 @@ func _release_cargo() -> void:
 		payload.remove_collision_exception_with(released_ref)
 
 	# 3. Clear grabbed reference and carrying state
-	var was_upgrade_rock: bool = released_ref.is_in_group("upgrade_rock")
+	var was_house_upgrade_cargo: bool = released_ref.is_in_group("brick") or released_ref.is_in_group("upgrade_rock")
 	grabbed_body = null
 	is_carrying_cargo = false
 	has_caught_object = false
@@ -1420,12 +1489,16 @@ func _release_cargo() -> void:
 	_update_wall_pointer()
 	_update_factory_pointer()
 
-	if was_upgrade_rock:
+	if was_house_upgrade_cargo:
 		_monitor_free_upgrade_rock(released_ref)
 
-	# Open hook back to default animation
+	# Open hook back to catch (or better_catch if boosted)
 	if payload_sprite and payload_sprite.sprite_frames:
-		if payload_sprite.sprite_frames.has_animation("default"):
+		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
+			payload_sprite.play("better_catch")
+		elif payload_sprite.sprite_frames.has_animation("catch"):
+			payload_sprite.play("catch")
+		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 
 	# Fling juice: camera recoil punch + claw squash recoil
@@ -1493,32 +1566,34 @@ func _init_crane_audio_players() -> void:
 	else:
 		add_child(_crane_turn_audio_player)
 
-	# 3. Trolley Move Audio Player
-	_trolley_move_audio_player = AudioStreamPlayer2D.new()
+	# 3. Trolley Move Audio Player (Non-positional AudioStreamPlayer for direct, full-volume arcade audio)
+	_trolley_move_audio_player = AudioStreamPlayer.new()
 	_trolley_move_audio_player.name = "TrolleyMovePlayer"
 	_trolley_move_audio_player.bus = sfx_bus
 	_trolley_move_audio_player.volume_db = trolley_move_volume_db
-	_trolley_move_audio_player.max_distance = 3000.0
-	_trolley_move_audio_player.attenuation = 1.0
 
 	if trolley_move_audio:
 		_trolley_move_audio_player.stream = trolley_move_audio
 	elif ResourceLoader.exists("res://Sounds/TrolleyMove.wav"):
 		_trolley_move_audio_player.stream = load("res://Sounds/TrolleyMove.wav")
 
-	# Enable looping for TrolleyMove so continuous movement remains seamless
+	# Enable valid looping for TrolleyMove so continuous movement remains seamless
 	if _trolley_move_audio_player.stream is AudioStreamWAV:
-		(_trolley_move_audio_player.stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+		var wav := _trolley_move_audio_player.stream as AudioStreamWAV
+		var bytes_per_sample: int = 2 if wav.format == AudioStreamWAV.FORMAT_16_BITS else 1
+		var channels: int = 2 if wav.stereo else 1
+		var total_samples: int = wav.data.size() / max(1, bytes_per_sample * channels)
+		if total_samples > 0:
+			wav.loop_begin = 0
+			wav.loop_end = total_samples
+			wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
 
 	_trolley_move_audio_player.finished.connect(func():
 		if is_trolley_actually_moving and not ButtonsController.is_esc_menu_open and not is_turning:
 			_trolley_move_audio_player.play()
 	)
 
-	if trolley_pivot:
-		trolley_pivot.add_child(_trolley_move_audio_player)
-	else:
-		add_child(_trolley_move_audio_player)
+	add_child(_trolley_move_audio_player)
 
 
 func _play_payload_catch_sound() -> void:
@@ -1792,6 +1867,11 @@ func _is_touching_grabbable_object() -> bool:
 				var diff: Vector2 = pit.global_position - payload.global_position
 				if absf(diff.x) <= 80.0 and diff.y >= -50.0 and diff.y <= 65.0:
 					return true
+			for node in tree.get_nodes_in_group("event_rock"):
+				if node is Node2D and node != payload and node != grabbed_body:
+					var diff: Vector2 = node.global_position - payload.global_position
+					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+						return true
 			for node in tree.get_nodes_in_group("upgrade_rock"):
 				if node is Node2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
@@ -1830,6 +1910,11 @@ func _find_touching_grabbable_body() -> RigidBody2D:
 					var mined_rock: RigidBody2D = pit.dispense_rock_to_crane(self)
 					if mined_rock:
 						return mined_rock
+			for node in tree.get_nodes_in_group("event_rock"):
+				if node is RigidBody2D and node != payload and node != grabbed_body:
+					var diff: Vector2 = node.global_position - payload.global_position
+					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+						return node
 			for node in tree.get_nodes_in_group("upgrade_rock"):
 				if node is RigidBody2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
@@ -1873,29 +1958,28 @@ func _on_payload_animation_finished() -> void:
 	var current_anim: StringName = payload_sprite.animation
 
 	if current_anim == &"catch_start":
-		# When catch_start finishes, immediately transition to catch_loop
-		if payload_tier >= 2 and payload_sprite.sprite_frames.has_animation("better_catch"):
+		if (is_event_boost_active or payload_tier >= 2) and payload_sprite.sprite_frames.has_animation("better_catch"):
 			payload_sprite.play("better_catch")
-		elif is_descending and not has_resolved_landing:
-			if payload_sprite.sprite_frames.has_animation("catch_loop"):
-				payload_sprite.play("catch_loop")
-			elif payload_sprite.sprite_frames.has_animation("catch"):
-				payload_sprite.play("catch")
-		elif not is_descending:
-			if payload_sprite.sprite_frames.has_animation("default"):
-				payload_sprite.play("default")
+		elif payload_sprite.sprite_frames.has_animation("catch"):
+			payload_sprite.play("catch")
 	elif current_anim == &"better_catch":
-		if is_descending and not has_resolved_landing:
+		if is_event_boost_active:
 			payload_sprite.play("better_catch")
+		elif payload_sprite.sprite_frames.has_animation("catch"):
+			payload_sprite.play("catch")
 	elif current_anim == &"hold":
 		is_descending = false
-		# As requested: after hold animation finishes, immediately play default animation
-		if payload_sprite.sprite_frames.has_animation("default"):
+		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
+			payload_sprite.play("better_catch")
+		elif payload_sprite.sprite_frames.has_animation("catch"):
+			payload_sprite.play("catch")
+		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 		if auto_retract_after_landing and not is_at_top:
 			target_rope_length = min_rope_length
 	elif current_anim == &"catch":
-		_resolve_landing()
+		if is_event_boost_active and payload_sprite.sprite_frames.has_animation("better_catch"):
+			payload_sprite.play("better_catch")
 
 
 # ==============================================================================
@@ -2181,10 +2265,15 @@ func _end_event_boost() -> void:
 	if _rocket_visual:
 		_rocket_visual.set_firing(false)
 
-	if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("default"):
-		payload_sprite.play("default")
+	if payload_sprite and payload_sprite.sprite_frames:
+		if is_carrying_cargo and payload_sprite.sprite_frames.has_animation("hold"):
+			payload_sprite.play("hold")
+		elif payload_sprite.sprite_frames.has_animation("catch"):
+			payload_sprite.play("catch")
+		elif payload_sprite.sprite_frames.has_animation("default"):
+			payload_sprite.play("default")
 
-	print("[Crane] Event Rock boost süresi tamamlandı. Standart hızlara ve animasyona dönüldü.")
+	print("[Crane] Upgrade Rock boost süresi tamamlandı. 'catch' animasyonuna dönüldü.")
 
 
 func _play_event_boost_pickup_effect() -> void:
@@ -2265,7 +2354,7 @@ func _check_and_deposit_to_factory() -> bool:
 func _check_and_deposit_to_house() -> bool:
 	if not grabbed_body or not is_instance_valid(grabbed_body):
 		return false
-	if not grabbed_body.is_in_group("upgrade_rock"):
+	if not grabbed_body.is_in_group("brick") and not grabbed_body.is_in_group("upgrade_rock"):
 		return false
 	var tree := get_tree()
 	if not tree:
@@ -2298,7 +2387,7 @@ func _check_and_deposit_to_house() -> bool:
 			_update_house_upgrade_pointers()
 			_update_wall_pointer()
 			_update_factory_pointer()
-			print("[Crane] Upgrade Rock başarıyla ", house.name, " evine verildi! Yeni seviye: Lv.", house.current_level)
+			print("[Crane] Tuğla (Brick) başarıyla ", house.name, " evine verildi! Yeni seviye: Lv.", house.current_level)
 			return true
 	return false
 
@@ -2356,7 +2445,7 @@ func _monitor_free_upgrade_rock(rock: RigidBody2D) -> void:
 
 
 func _update_house_upgrade_pointers() -> void:
-	var holding_upgrade_rock: bool = is_carrying_cargo and grabbed_body != null and is_instance_valid(grabbed_body) and grabbed_body.is_in_group("upgrade_rock")
+	var holding_upgrade_item: bool = is_carrying_cargo and grabbed_body != null and is_instance_valid(grabbed_body) and (grabbed_body.is_in_group("brick") or grabbed_body.is_in_group("upgrade_rock"))
 	var tree := get_tree()
 	if not tree:
 		return
@@ -2364,11 +2453,11 @@ func _update_house_upgrade_pointers() -> void:
 	if not hm and tree.current_scene:
 		hm = tree.current_scene.find_child("Houses", true, false)
 	if hm and hm.has_method("set_upgrade_pointers_visible"):
-		hm.set_upgrade_pointers_visible(holding_upgrade_rock)
+		hm.set_upgrade_pointers_visible(holding_upgrade_item)
 	else:
 		for h in tree.get_nodes_in_group("house"):
 			if is_instance_valid(h) and h.has_method("set_pointer_visible"):
-				h.set_pointer_visible(holding_upgrade_rock)
+				h.set_pointer_visible(holding_upgrade_item)
 
 
 func _update_wall_pointer() -> void:

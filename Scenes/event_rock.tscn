@@ -1,15 +1,15 @@
 [gd_scene format=3 uid="uid://dic06qkh683di"]
 
-[ext_resource type="Texture2D" uid="uid://bt08hijcpk867" path="res://Sprites/diamond.png" id="1_diamond"]
+[ext_resource type="Texture2D" uid="uid://bgd6fi6174m3f" path="res://Sprites/enderpearl.png" id="1_enderpearl"]
 [ext_resource type="Script" path="res://Scripts/event_rock.gd" id="2_event_script"]
 [ext_resource type="Shader" uid="uid://bdyxgi7lrtr1i" path="res://Shaders/outline.gdshader" id="3_outline"]
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_diamond"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_enderpearl"]
 shader = ExtResource("3_outline")
 shader_parameter/line_color = Color(0, 0, 0, 1)
 shader_parameter/line_thickness = 1.0
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_diamond"]
+[sub_resource type="CircleShape2D" id="CircleShape2D_enderpearl"]
 radius = 28.0
 
 [node name="EventRock" type="RigidBody2D" groups=["cargo", "event_rock", "grabbable", "rock"]]
@@ -20,9 +20,9 @@ max_contacts_reported = 4
 script = ExtResource("2_event_script")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-material = SubResource("ShaderMaterial_diamond")
+material = SubResource("ShaderMaterial_enderpearl")
 scale = Vector2(4.5, 4.5)
-texture = ExtResource("1_diamond")
+texture = ExtResource("1_enderpearl")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("CircleShape2D_diamond")
+shape = SubResource("CircleShape2D_enderpearl")

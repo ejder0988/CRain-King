@@ -169,7 +169,11 @@ func place_brick(brick_body: Node2D) -> bool:
 	_update_wall_state(true)
 	stage_changed.emit(current_stage, max_stages)
 
-	print("[StoneWall] Tuğla duvara yerleştirildi! Duvar seviyesi: ", current_stage, "/", max_stages)
+	var gm = get_node_or_null("/root/GameManager")
+	if gm and gm.has_method("add_money"):
+		gm.add_money(10)
+
+	print("[StoneWall] Tuğla duvara yerleştirildi! Duvar seviyesi: ", current_stage, "/", max_stages, " (+10$ Kazanıldı)")
 
 	if current_stage >= max_stages:
 		wall_completed.emit()

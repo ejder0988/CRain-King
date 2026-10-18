@@ -3,9 +3,16 @@
 [ext_resource type="Shader" uid="uid://bbdvc1s8thhwx" path="res://Shaders/inverse.gdshader" id="1_8saeu"]
 [ext_resource type="Texture2D" uid="uid://dugaravil6tpn" path="res://Sprites/logo.png" id="2_ghw46"]
 [ext_resource type="Texture2D" uid="uid://dw5u45roadeb7" path="res://Sprites/logo_outline.png" id="3_df05h"]
+[ext_resource type="Texture2D" uid="uid://s7ushwm5dmc3" path="res://Sprites/Story/character2.png" id="3_rrcx7"]
+[ext_resource type="Texture2D" uid="uid://bn4ivdml813y8" path="res://Sprites/Story/character3.png" id="4_fh7cp"]
 [ext_resource type="Shader" uid="uid://ddb8xl7fkrmnm" path="res://Shaders/Transition.gdshader" id="4_ghw46"]
+[ext_resource type="Texture2D" uid="uid://bcqko6aa7fw6k" path="res://Sprites/Story/character4.png" id="5_8e205"]
 [ext_resource type="Texture2D" uid="uid://boltmrnbutdo1" path="res://Sprites/TransitionBox.png" id="5_df05h"]
+[ext_resource type="Texture2D" uid="uid://dvrnox4re2fpf" path="res://Sprites/Story/character5.png" id="6_7467j"]
+[ext_resource type="Texture2D" uid="uid://dyv6rgc6c7htk" path="res://Sprites/Story/character1.png" id="6_koqhg"]
 [ext_resource type="Script" uid="uid://cdjbxsjod1x17" path="res://Scripts/main_menu.gd" id="6_menu"]
+[ext_resource type="Texture2D" uid="uid://b4xa07axt55py" path="res://Sprites/Story/character6.png" id="7_2x1g0"]
+[ext_resource type="AudioStream" uid="uid://cydwmxn04sbj2" path="res://Sounds/Açılış EkranıLoopu.mp3" id="8_music"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_df05h"]
 shader = ExtResource("4_ghw46")
@@ -206,53 +213,28 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("6_menu")
+menu_music = ExtResource("8_music")
+story_textures = Array[Texture2D]([ExtResource("6_koqhg"), ExtResource("3_rrcx7"), ExtResource("4_fh7cp"), ExtResource("5_8e205"), ExtResource("6_7467j"), ExtResource("7_2x1g0")])
 
-[node name="MenuItems" type="Control" parent="." unique_id=1117130774]
+[node name="Story" type="ColorRect" parent="." unique_id=2119770306]
+material = SubResource("ShaderMaterial_df05h")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+color = Color(0, 0, 0, 1)
 
-[node name="ColorRect" type="ColorRect" parent="MenuItems" unique_id=1853836862]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0.3372549, 0.74509805, 1, 1)
+[node name="Icon" type="Sprite2D" parent="Story" unique_id=1487369435]
+material = SubResource("ShaderMaterial_u5e82")
+position = Vector2(960, 540)
+scale = Vector2(2.6875, 2.6875)
+texture = ExtResource("6_koqhg")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="MenuItems" unique_id=989386122]
-custom_minimum_size = Vector2(50, 50)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.030000001
-anchor_top = 0.711
-anchor_right = 0.23400001
-anchor_bottom = 0.95900005
-offset_left = 0.3999977
-offset_top = 0.11999512
-offset_right = -0.2800293
-offset_bottom = 0.27990723
-grow_vertical = 0
-theme_override_constants/separation = 16
-
-[node name="StartButton" type="Button" parent="MenuItems/VBoxContainer" unique_id=397700734]
-custom_minimum_size = Vector2(0, 75)
-layout_mode = 2
-text = "Start"
-
-[node name="OptionButton" type="Button" parent="MenuItems/VBoxContainer" unique_id=694607256]
-custom_minimum_size = Vector2(0, 75)
-layout_mode = 2
-text = "Options"
-
-[node name="ExitButton" type="Button" parent="MenuItems/VBoxContainer" unique_id=1334814249]
-custom_minimum_size = Vector2(0, 75)
-layout_mode = 2
-text = "Exit"
+[node name="Diamond" type="Sprite2D" parent="Story/Icon" unique_id=917648157]
+scale = Vector2(1.1377058, 1.1377058)
+texture = ExtResource("3_df05h")
 
 [node name="Entrance" type="ColorRect" parent="." unique_id=1024688302]
 visible = false
@@ -272,7 +254,7 @@ position = Vector2(960, 540)
 texture = ExtResource("2_ghw46")
 
 [node name="Diamond" type="Sprite2D" parent="Entrance/Icon" unique_id=1216626930]
-position = Vector2(0.99999994, 0.99999994)
+position = Vector2(-5.9604645e-08, 5)
 scale = Vector2(1.6, 1.6)
 texture = ExtResource("3_df05h")
 

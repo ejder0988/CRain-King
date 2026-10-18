@@ -21,7 +21,10 @@
 [ext_resource type="Shader" uid="uid://b2eeoxbloehs3" path="res://Shaders/cloud.gdshader" id="15_nb51f"]
 [ext_resource type="Texture2D" uid="uid://bnli5t31822de" path="res://Sprites/Background/factory.png" id="17_ewbju"]
 [ext_resource type="PackedScene" uid="uid://dtcg1cfq3571p" path="res://Scenes/fluid_water.tscn" id="18_fluidwater"]
+[ext_resource type="AudioStream" uid="uid://cgavlxdcjacx1" path="res://Sounds/PayloadCatch.wav" id="18_oeip8"]
+[ext_resource type="AudioStream" uid="uid://k75ivv3322fx" path="res://Sounds/CraneTurn.wav" id="19_xe308"]
 [ext_resource type="Texture2D" uid="uid://gyp5sbiv36ur" path="res://Sprites/Background/LandLayer5.png" id="20_7nbq1"]
+[ext_resource type="AudioStream" uid="uid://b10fdyjv2ugaq" path="res://Sounds/TrolleyMove.wav" id="20_d3cha"]
 [ext_resource type="Texture2D" uid="uid://qfyv0ik5qen7" path="res://Sprites/Crane/crane_bucket_low.png" id="21_81klo"]
 [ext_resource type="Texture2D" uid="uid://caixcmrgyy7dp" path="res://Sprites/houses.png" id="25_22asu"]
 [ext_resource type="Script" uid="uid://c5dy71qimwnl6" path="res://Scripts/houses_manager.gd" id="26_houses"]
@@ -591,7 +594,7 @@ animations = [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_6xvgv")
 }],
-"loop": 0,
+"loop": 1,
 "name": &"catch",
 "speed": 5.0
 }, {
@@ -658,6 +661,9 @@ shader_parameter/position_impact = 0.75
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=987654321]
 position = Vector2(960, 540)
+
+[node name="AudioListener2D" type="AudioListener2D" parent="Camera2D" unique_id=987654322]
+current = true
 
 [node name="Background" type="Node2D" parent="." unique_id=842219125]
 position = Vector2(15, 0)
@@ -1014,74 +1020,16 @@ trolley_speed = 150.0
 min_trolley_distance = 110.0
 max_trolley_distance = 580.0
 initial_trolley_distance = 260.0
-min_rope_length = null
-max_rope_length = null
 rope_winch_speed = 350.0
-rope_offset_y = null
-rope_stiffness = null
-swing_max_angle_deg = null
-pendulum_gravity = null
-pendulum_damping = null
-movement_swing_strength_tier1 = null
-movement_swing_strength_tier2 = null
-swing_inertia_tier1 = null
-swing_inertia_tier2 = null
-drive_lag_tier1 = null
-drive_lag_tier2 = null
-turn_swing_kick_tier1 = null
-turn_swing_kick_tier2 = null
-turn_whip_power_tier1 = null
-turn_whip_power_tier2 = null
-lock_trolley_during_descent = null
-auto_retract_after_landing = null
-landing_retract_delay = null
-arrow_distance = null
-payload_tier = null
-payload_upgrade_key = null
 trolley_speed_tier1 = 200.0
-rope_winch_speed_tier1 = null
-trolley_speed_tier2 = null
-rope_winch_speed_tier2 = null
-fling_multiplier_tier1 = null
-fling_multiplier_tier2 = null
-event_boost_duration = null
-enable_arrow_bob = null
-arrow_bob_amplitude = null
-arrow_bob_speed = null
-enable_arrow_stretch = null
-enable_aim_cursor = null
-toggle_aim_cursor_key = null
-enable_trajectory_dots = null
-enable_target_lockon = null
-aim_color_normal = null
-aim_color_locked = null
-aim_color_cargo = null
-cargo_carry_offset_y = null
-payload_catch_volume_db = null
-crane_turn_volume_db = null
-trolley_move_volume_db = null
-enable_water_interaction = null
+payload_catch_audio = ExtResource("18_oeip8")
+crane_turn_audio = ExtResource("19_xe308")
+trolley_move_audio = ExtResource("20_d3cha")
 water_splash_audio = ExtResource("10_8m3t6")
-water_splash_volume_db = null
-water_scoop_radius = null
-water_hold_force = null
-water_min_scoop_particles = null
-enable_pickup_shake = null
-pickup_shake_intensity = null
-pickup_shake_duration = null
-enable_hit_stop = null
-hit_stop_duration = null
-hit_stop_time_scale = null
-rope_segments = null
-mast_local_x = null
 boom_local_y = -703.0
-enable_idle_shake = null
 shake_sprite_1 = NodePath("../Background/LandLayer4")
 shake_sprite_2 = NodePath("../Background/LandLayer3")
 shake_sprite_3 = NodePath("../Background/LandLayer2")
-shake_amplitude = null
-shake_speed_scale = null
-current_payload_level = null
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Crane" unique_id=199735291]
 position = Vector2(-28, -20)
@@ -1150,7 +1098,7 @@ angular_damp = 2.0
 [node name="PayloadAnimationSprite2d" type="AnimatedSprite2D" parent="Crane/Payload" unique_id=488710238]
 scale = Vector2(2.6953125, 2.6953125)
 sprite_frames = SubResource("SpriteFrames_yf5fn")
-animation = &"better_catch"
+animation = &"catch"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Crane/Payload" unique_id=1812875115]
 shape = SubResource("CapsuleShape2D_hook")

@@ -172,6 +172,15 @@ var _r_handled_restart: bool = false
 # Fare ile basılı tutulan buton adı
 var _mouse_held_btn: String = ""
 
+# Shift Fabrika Yükseltme Badge & Red Animasyonu
+var _shift_price_panel: PanelContainer = null
+var _shift_price_label: Label = null
+var _original_shift_pos: Vector2 = Vector2.ZERO
+var _original_price_pos: Vector2 = Vector2.ZERO
+var _shift_shake_tween: Tween = null
+var _prev_shift_down: bool = false
+var _prev_mouse_shift_down: bool = false
+
 # Ses Durumları
 var _sound_muted: bool = false
 var _music_muted: bool = false
@@ -196,6 +205,7 @@ var _r_startup_delay_timer: float = 1.0
 # 4. _READY VE BAŞLATMA
 # ------------------------------------------------------------------------------
 func _ready() -> void:
+	add_to_group("buttons")
 	_r_startup_delay_timer = r_restart_startup_delay
 	if ResourceLoader.exists(BUTTONS_SHEET_PATH):
 		_buttons_sheet = load(BUTTONS_SHEET_PATH)
@@ -204,6 +214,19 @@ func _ready() -> void:
 	_resolve_node_references()
 	_setup_textures_and_cache()
 	_setup_ui_bars()
+
+	if shift_sprite:
+		_original_shift_pos = shift_sprite.position
+		_setup_shift_price_badge()
+
+	# Ensure MoneyHUD exists in scene
+	if is_inside_tree() and not get_tree().get_first_node_in_group("money_hud"):
+		var hud_script: GDScript = load("res://Scripts/money_hud.gd") as GDScript
+		if hud_script:
+			var hud: Node = hud_script.new()
+			hud.name = "MoneyHUD"
+			var parent_node: Node = get_parent() if get_parent() else self
+			parent_node.add_child.call_deferred(hud)
 
 	# ESC Menüsünün başlangıç durumunu ayarla
 	ButtonsController.is_esc_menu_open = esc_menu_open_at_start
@@ -670,6 +693,12 @@ func toggle_esc_menu() -> void:
 func _apply_esc_menu_visibility(is_open: bool, animate: bool) -> void:
 	var menu_nodes: Array[Sprite2D] = [sound_sprite, sound_key_a_sprite, music_sprite, music_key_d_sprite]
 
+	# Notify MoneyHUD to smoothly slide down when ESC menu is open, and up when closed
+	if is_inside_tree():
+		var hud = get_tree().get_first_node_in_group("money_hud")
+		if hud and hud.has_method("set_descended"):
+			hud.set_descended(is_open)
+
 	if not animate:
 		for s in menu_nodes:
 			if s and is_instance_valid(s):
@@ -898,11 +927,24 @@ func _check_tutorial_inputs() -> void:
 		or _mouse_held_btn == "Space"
 	)
 
-	# 6. Shift tuşu (Kalıcı buton)
+	# 6. Shift tuşu (Kalıcı buton - Fabrika Yükseltme)
 	var shift_active: bool = (
 		Input.is_key_pressed(KEY_SHIFT)
 		or _mouse_held_btn == "Shift"
 	)
+	var shift_just_pressed: bool = (
+		(Input.is_key_pressed(KEY_SHIFT) and not _prev_shift_down)
+		or (_mouse_held_btn == "Shift" and not _prev_mouse_shift_down)
+	)
+	_prev_shift_down = Input.is_key_pressed(KEY_SHIFT)
+	_prev_mouse_shift_down = (_mouse_held_btn == "Shift")
+
+	if shift_just_pressed:
+		var tree := get_tree()
+		if tree:
+			var factory = tree.get_first_node_in_group("factory")
+			if factory and factory.has_method("try_upgrade_factory"):
+				factory.try_upgrade_factory()
 
 	# --- Tetikleme Kontrolleri (Zamanlayıcıları Başlat) ---
 	if (q_active or e_active) and not _qe_triggered:
@@ -996,3 +1038,145 @@ func _fade_out(nodes: Array) -> void:
 			if is_instance_valid(node):
 				node.visible = false
 	)
+
+
+# ------------------------------------------------------------------------------
+# 9. SHIFT FABRİKA YÜKSELTME ROZETİ VE REDDETME (REJECTION SHAKE) ANİMASYONU
+# ------------------------------------------------------------------------------
+func _setup_shift_price_badge() -> void:
+	if not shift_sprite:
+		return
+
+	_shift_price_panel = PanelContainer.new()
+	_shift_price_panel.name = "ShiftPriceBadge"
+	_shift_price_panel.custom_minimum_size = Vector2(76.0, 28.0)
+
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.06, 0.09, 0.16, 0.92)
+	panel_style.border_width_left = 1
+	panel_style.border_width_top = 1
+	panel_style.border_width_right = 1
+	panel_style.border_width_bottom = 1
+	panel_style.border_color = Color(1.0, 0.82, 0.25, 0.85)
+	panel_style.set_corner_radius_all(6)
+	panel_style.content_margin_left = 6
+	panel_style.content_margin_right = 6
+	panel_style.content_margin_top = 2
+	panel_style.content_margin_bottom = 2
+	_shift_price_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var hbox := HBoxContainer.new()
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 4)
+	_shift_price_panel.add_child(hbox)
+
+	var icon_label := Label.new()
+	icon_label.text = "▲"
+	icon_label.add_theme_font_size_override("font_size", 11)
+	icon_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+	hbox.add_child(icon_label)
+
+	_shift_price_label = Label.new()
+	_shift_price_label.name = "PriceLabel"
+	_shift_price_label.text = "10$"
+	_shift_price_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_shift_price_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_shift_price_label.add_theme_font_size_override("font_size", 14)
+	_shift_price_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.3, 1.0))
+	_shift_price_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	_shift_price_label.add_theme_constant_override("outline_size", 3)
+	hbox.add_child(_shift_price_label)
+
+	add_child(_shift_price_panel)
+
+	# Shift butonunun hemen üzerinde konumlandır
+	_original_price_pos = Vector2(
+		_original_shift_pos.x - 38.0,
+		_original_shift_pos.y - 62.0
+	)
+	_shift_price_panel.position = _original_price_pos
+
+	# Badge'e tıklandığında da yükseltme denemesini tetikle
+	_shift_price_panel.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			var tree := get_tree()
+			if tree:
+				var factory = tree.get_first_node_in_group("factory")
+				if factory and factory.has_method("try_upgrade_factory"):
+					factory.try_upgrade_factory()
+	)
+
+	# GameManager para değişimi sinyaline bağlan
+	var gm = get_node_or_null("/root/GameManager")
+	if gm and gm.has_signal("money_changed"):
+		if not gm.money_changed.is_connected(_on_game_manager_money_changed):
+			gm.money_changed.connect(_on_game_manager_money_changed)
+
+	# Fiyatı fabrikadan çekerek başlat
+	var tree := get_tree()
+	if tree:
+		var factory = tree.get_first_node_in_group("factory")
+		if factory and factory.has_method("get_upgrade_cost"):
+			update_shift_upgrade_price(factory.get_upgrade_cost(), factory.current_level >= factory.max_level)
+		else:
+			update_shift_upgrade_price(10, false)
+
+
+## Fabrika seviye fiyatını günceller
+func update_shift_upgrade_price(cost: int, is_max: bool) -> void:
+	if not _shift_price_label:
+		return
+
+	if is_max:
+		_shift_price_label.text = "MAX"
+		_shift_price_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.5))
+	else:
+		_shift_price_label.text = "%d$" % cost
+		var gm = get_node_or_null("/root/GameManager")
+		var current_money: int = gm.get_money() if gm and gm.has_method("get_money") else 0
+		if current_money >= cost:
+			_shift_price_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.3))
+		else:
+			_shift_price_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9, 0.85))
+
+
+func _on_game_manager_money_changed(_new_money: int) -> void:
+	var tree := get_tree()
+	if tree:
+		var factory = tree.get_first_node_in_group("factory")
+		if factory and factory.has_method("get_upgrade_cost"):
+			update_shift_upgrade_price(factory.get_upgrade_cost(), factory.current_level >= factory.max_level)
+
+
+## Yükseltme başarısız olduğunda (para yetersiz veya max seviye):
+## Buton kırmızıya döner ve reddedilmiş gibi iki yana sallanır
+func play_shift_rejection_shake() -> void:
+	if not shift_sprite:
+		return
+
+	if _shift_shake_tween and _shift_shake_tween.is_valid():
+		_shift_shake_tween.kill()
+
+	# Pozisyonları ve renkleri sıfırla
+	shift_sprite.position = _original_shift_pos
+	if _shift_price_panel:
+		_shift_price_panel.position = _original_price_pos
+
+	# Kırmızı reddetme flaşı
+	shift_sprite.modulate = Color(1.0, 0.22, 0.22, 1.0)
+	if _shift_price_panel:
+		_shift_price_panel.modulate = Color(1.0, 0.3, 0.3, 1.0)
+
+	_shift_shake_tween = create_tween()
+	var shake_offsets: Array[float] = [-9.0, 9.0, -7.0, 7.0, -4.0, 4.0, -2.0, 2.0, 0.0]
+	var step_time: float = 0.035
+
+	for offset in shake_offsets:
+		_shift_shake_tween.tween_property(shift_sprite, "position:x", _original_shift_pos.x + offset, step_time)
+		if _shift_price_panel:
+			_shift_shake_tween.parallel().tween_property(_shift_price_panel, "position:x", _original_price_pos.x + offset, step_time)
+
+	# Rengi yumuşakça orijinal haline döndür
+	_shift_shake_tween.tween_property(shift_sprite, "modulate", Color.WHITE, 0.16)
+	if _shift_price_panel:
+		_shift_shake_tween.parallel().tween_property(_shift_price_panel, "modulate", Color.WHITE, 0.16)

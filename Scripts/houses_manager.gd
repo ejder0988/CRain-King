@@ -38,12 +38,12 @@ signal game_over
 @export var debris_scatter_v: float = 110.0
 
 @export_group("UI & Health Display")
-## Show total house health HUD at top-center of screen
-@export var show_health_hud: bool = true
+## Show total house health HUD at top-center of screen (Disabled by user request)
+@export var show_health_hud: bool = false
 
 var _managed_houses: Array[StaticBody2D] = []
-var _submerged_timers: Dictionary = {}       # house -> float (elapsed continuous submersion time)
-var _damage_cooldown_until: Dictionary = {}  # house -> int (msec timestamp)
+var _submerged_timers: Dictionary = {} # house -> float (elapsed continuous submersion time)
+var _damage_cooldown_until: Dictionary = {} # house -> int (msec timestamp)
 var _cached_fluid_water: FluidWater = null
 
 var _hud_layer: CanvasLayer = null
@@ -305,14 +305,18 @@ func _trigger_game_over() -> void:
 	_show_game_over_ui()
 
 
-func _create_health_hud() -> void:
-	if _hud_layer and is_instance_valid(_hud_layer):
-		return
+func _ensure_hud_layer() -> void:
+	if not _hud_layer or not is_instance_valid(_hud_layer):
+		_hud_layer = CanvasLayer.new()
+		_hud_layer.name = "HouseHealthHUD"
+		_hud_layer.layer = 10
+		add_child(_hud_layer)
 
-	_hud_layer = CanvasLayer.new()
-	_hud_layer.name = "HouseHealthHUD"
-	_hud_layer.layer = 10
-	add_child(_hud_layer)
+
+func _create_health_hud() -> void:
+	if not show_health_hud:
+		return
+	_ensure_hud_layer()
 
 	var panel := PanelContainer.new()
 	panel.name = "HealthPanel"
@@ -448,7 +452,7 @@ func _spawn_house_debris(_house: StaticBody2D, bounds: Dictionary) -> void:
 
 		var dir_x: float = (spawn_x - center_pos.x) / maxf(bounds.width * 0.5, 1.0)
 		var vel_x: float = dir_x * debris_scatter_h + randf_range(-25.0, 25.0)
-		var vel_y: float = -randf_range(debris_scatter_v * 0.5, debris_scatter_v)
+		var vel_y: float = - randf_range(debris_scatter_v * 0.5, debris_scatter_v)
 		debris.linear_velocity = Vector2(vel_x, vel_y)
 		debris.angular_velocity = randf_range(-12.0, 12.0)
 

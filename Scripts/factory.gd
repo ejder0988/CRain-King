@@ -22,10 +22,12 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 @export var max_level: int = 5
 ## Starting level (1 to 5)
 @export var current_level: int = 1
-## Key to upgrade factory
-@export var upgrade_key: Key = KEY_U
+## Key to upgrade factory (Default: KEY_SHIFT)
+@export var upgrade_key: Key = KEY_SHIFT
 ## Alternative key to upgrade factory
-@export var alt_upgrade_key: Key = KEY_NONE
+@export var alt_upgrade_key: Key = KEY_U
+## Upgrade cost for each level: Level 1->2 ($10), 2->3 ($25), 3->4 ($45), 4->5 ($80)
+@export var level_upgrade_costs: Array[int] = [10, 25, 45, 80]
 
 @export_group("Level Sprites")
 ## Visual sprite textures for each level (Level 1 to 5). Auto-sliced from factory.png if left empty.
@@ -40,18 +42,31 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 @export var brick_scene: PackedScene = preload("res://Scenes/brick.tscn")
 ## PackedScene for normal rock fallback if needed
 @export var rock_scene: PackedScene = preload("res://Scenes/rock.tscn")
-## PackedScene for Upgrade Rock (Enderpearl)
+## PackedScene for Upgrade Rock (Enderpearl) fallback
 @export var upgrade_rock_scene: PackedScene = preload("res://Scenes/upgrade_rock.tscn")
-## Probability of spawning an Upgrade Rock instead of Brick (0.25 = 25%)
-@export_range(0.0, 1.0, 0.01) var upgrade_rock_chance: float = 0.25
-## İlk seferde kesinlikle Tuğla (Brick) çıkar, sonraki seferlerde Upgrade / Event Rock olasılığı devreye girer
+## İlk seferde kesinlikle Tuğla (Brick) çıkar, sonraki seferlerde Event Rock olasılığı devreye girer
 @export var guaranteed_first_brick: bool = true
-## PackedScene for Event Rock (Diamond - 5s timer)
+## PackedScene for Event Rock (Enderpearl - 5s timer)
 @export var event_rock_scene: PackedScene = preload("res://Scenes/event_rock.tscn")
 ## Probability of spawning an Event Rock (0.25 = 25%)
-@export_range(0.0, 1.0, 0.01) var event_rock_chance: float = 0.25
-## Global position where the finished product is spawned
+## Global position where normal brick is spawned
 @export var spawn_position: Vector2 = Vector2(383, 862)
+
+@export_group("Upgrade Rock (Enderpearl) Settings")
+## Upgrade rock'ın ilk çıkış (spawn) konumu (arkaplanda başlar)
+@export var upgrade_rock_spawn_position: Vector2 = Vector2(230, 800)
+## Upgrade rock'ın havada süzülüp düşeceği (sekme başlangıç) hedef konumu
+@export var upgrade_rock_landing_position: Vector2 = Vector2(550, 890)
+## İlk fırlatmada yukarı doğru ivme / tepe yüksekliği
+@export var upgrade_rock_launch_height: float = 260.0
+## Fırlatma arkının süresi (saniye)
+@export var upgrade_rock_launch_duration: float = 1.25
+## Zıplama / sekme kuvveti
+@export var upgrade_rock_bounce_force: float = 420.0
+## İlk zıplamadan sonra yok olma süresi min (saniye)
+@export var upgrade_rock_lifetime_min: float = 5.0
+## İlk zıplamadan sonra yok olma süresi max (saniye)
+@export var upgrade_rock_lifetime_max: float = 7.0
 
 @export_group("Pointer Settings")
 ## When true, the tutorial pointer bobs up and down; when false, it remains stationary in place
@@ -143,10 +158,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 
-	# U Key: Upgrade factory
-	if event.keycode == upgrade_key or (alt_upgrade_key != KEY_NONE and event.keycode == alt_upgrade_key):
+	# Shift or U Key: Upgrade factory with money
+	if event.keycode == KEY_SHIFT or event.physical_keycode == KEY_SHIFT or event.keycode == upgrade_key or (alt_upgrade_key != KEY_NONE and event.keycode == alt_upgrade_key):
 		get_viewport().set_input_as_handled()
-		upgrade()
+		try_upgrade_factory()
 
 
 ## Shows the tutorial pointer when the player picks up a rock for the first time
@@ -277,7 +292,7 @@ func _finish_production() -> void:
 	if animation_player and animation_player.has_animation("popout"):
 		animation_player.play("popout")
 
-	# İlk seferde kesinlikle Tuğla çıkar, sonraki seferlerde olasılıklar devreye girer
+	# İlk seferde kesinlikle Tuğla çıkar, sonraki seferlerde Event Rock olasılığı devreye girer
 	production_count += 1
 	var product_type: String = "brick"
 	if guaranteed_first_brick and production_count == 1:
@@ -285,24 +300,19 @@ func _finish_production() -> void:
 		print("[Factory] İlk üretim: Kesin olarak Tuğla (Brick) üretildi!")
 	else:
 		var roll: float = randf()
-		if roll < upgrade_rock_chance:
-			product_type = "upgrade_rock"
-		elif roll < (upgrade_rock_chance + event_rock_chance):
+		if roll < event_rock_chance:
 			product_type = "event_rock"
 		else:
 			product_type = "brick"
 
 	var spawned_product: RigidBody2D = null
 
-	if product_type == "upgrade_rock":
-		spawned_product = _instantiate_upgrade_rock()
-	elif product_type == "event_rock":
+	if product_type == "event_rock":
 		spawned_product = _instantiate_event_rock()
 	else:
 		spawned_product = _instantiate_brick()
 
 	if spawned_product:
-		spawned_product.global_position = spawn_position
 		var target_parent: Node = get_tree().current_scene
 		if not target_parent:
 			target_parent = owner if owner else get_parent()
@@ -313,13 +323,22 @@ func _finish_production() -> void:
 		if w and w.has_method("add_collision_exception"):
 			w.add_collision_exception(spawned_product)
 
-		if product_type == "event_rock":
+		if product_type == "event_rock" or product_type == "upgrade_rock":
+			if spawned_product.has_method("launch_arc"):
+				if "bounce_force" in spawned_product:
+					spawned_product.bounce_force = upgrade_rock_bounce_force
+				if "lifetime_min" in spawned_product:
+					spawned_product.lifetime_min = upgrade_rock_lifetime_min
+				if "lifetime_max" in spawned_product:
+					spawned_product.lifetime_max = upgrade_rock_lifetime_max
+				spawned_product.launch_arc(upgrade_rock_spawn_position, upgrade_rock_landing_position, upgrade_rock_launch_height, upgrade_rock_launch_duration)
+			else:
+				spawned_product.global_position = upgrade_rock_spawn_position
+
 			event_rock_spawned.emit(spawned_product, current_level)
-			print("[Factory] ★ EVENT ROCK (Elmas - 5s Süreli) üretildi ve çıktı! Konum: ", spawn_position)
-		elif product_type == "upgrade_rock":
-			upgrade_rock_spawned.emit(spawned_product, current_level)
-			print("[Factory] ★ UPGRADE ROCK (Enderpearl) üretildi ve çıktı! Konum: ", spawn_position)
+			print("[Factory] ★ UPGRADE ROCK (Enderpearl) fırlatıldı! Çıkış: ", upgrade_rock_spawn_position, " -> Hedef: ", upgrade_rock_landing_position)
 		else:
+			spawned_product.global_position = spawn_position
 			brick_spawned.emit(spawned_product, current_level)
 			print("[Factory] TUĞLA (Brick) üretildi ve çıktı! Konum: ", spawn_position)
 
@@ -385,11 +404,11 @@ func _instantiate_event_rock() -> RigidBody2D:
 	return rock
 
 
-func spawn_event_rock(pos: Vector2 = Vector2.INF) -> RigidBody2D:
-	var target_pos: Vector2 = pos if pos != Vector2.INF else spawn_position
+func spawn_event_rock(start_p: Vector2 = Vector2.INF, target_p: Vector2 = Vector2.INF) -> RigidBody2D:
+	var from_pos: Vector2 = start_p if start_p != Vector2.INF else upgrade_rock_spawn_position
+	var to_pos: Vector2 = target_p if target_p != Vector2.INF else upgrade_rock_landing_position
 	var rock := _instantiate_event_rock()
 	if rock:
-		rock.global_position = target_pos
 		var target_parent: Node = get_tree().current_scene if get_tree() else owner
 		if not target_parent:
 			target_parent = get_parent()
@@ -397,12 +416,83 @@ func spawn_event_rock(pos: Vector2 = Vector2.INF) -> RigidBody2D:
 		var w = _find_fluid_water()
 		if w and w.has_method("add_collision_exception"):
 			w.add_collision_exception(rock)
+
+		if rock.has_method("launch_arc"):
+			if "bounce_force" in rock:
+				rock.bounce_force = upgrade_rock_bounce_force
+			if "lifetime_min" in rock:
+				rock.lifetime_min = upgrade_rock_lifetime_min
+			if "lifetime_max" in rock:
+				rock.lifetime_max = upgrade_rock_lifetime_max
+			rock.launch_arc(from_pos, to_pos, upgrade_rock_launch_height, upgrade_rock_launch_duration)
+		else:
+			rock.global_position = from_pos
+
 		event_rock_spawned.emit(rock, current_level)
-		print("[Factory] ★ Manuel Event Rock spawn edildi! Konum: ", target_pos)
+		print("[Factory] ★ Manuel Upgrade Rock fırlatıldı! Çıkış: ", from_pos, " -> Hedef: ", to_pos)
 	return rock
 
 
-## Attempts to upgrade the factory to the next level (up to max_level).
+func spawn_upgrade_rock(start_p: Vector2 = Vector2.INF, target_p: Vector2 = Vector2.INF) -> RigidBody2D:
+	return spawn_event_rock(start_p, target_p)
+
+
+
+func get_upgrade_cost() -> int:
+	var idx: int = current_level - 1
+	if idx >= 0 and idx < level_upgrade_costs.size():
+		return level_upgrade_costs[idx]
+	return 0
+
+
+func can_upgrade() -> bool:
+	if current_level >= max_level:
+		return false
+	var cost: int = get_upgrade_cost()
+	var gm = get_node_or_null("/root/GameManager")
+	var current_money: int = gm.get_money() if gm and gm.has_method("get_money") else 0
+	return current_money >= cost
+
+
+## Attempts to upgrade the factory with money when Shift is pressed
+func try_upgrade_factory() -> bool:
+	if current_level >= max_level:
+		print("[Factory] Duvar/Fabrika zaten maksimum seviyede (", max_level, ").")
+		_trigger_rejection_feedback()
+		return false
+
+	var cost: int = get_upgrade_cost()
+	var gm = get_node_or_null("/root/GameManager")
+	if not gm or not gm.has_method("spend_money") or not gm.spend_money(cost):
+		print("[Factory] Yükseltme için yeterli para yok! Gerekli: ", cost, "$, Mevcut: ", (gm.get_money() if gm else 0), "$")
+		_trigger_rejection_feedback()
+		return false
+
+	# Deducted successfully! Upgrade factory
+	var success := upgrade()
+	if success:
+		_notify_price_updated()
+	return success
+
+
+func _trigger_rejection_feedback() -> void:
+	_jiggle_label(Color(1.0, 0.25, 0.25))
+	var tree := get_tree()
+	if tree:
+		var buttons = tree.get_first_node_in_group("buttons")
+		if buttons and buttons.has_method("play_shift_rejection_shake"):
+			buttons.play_shift_rejection_shake()
+
+
+func _notify_price_updated() -> void:
+	var tree := get_tree()
+	if tree:
+		var buttons = tree.get_first_node_in_group("buttons")
+		if buttons and buttons.has_method("update_shift_upgrade_price"):
+			buttons.update_shift_upgrade_price(get_upgrade_cost(), current_level >= max_level)
+
+
+## Upgrades the factory to the next level (up to max_level).
 func upgrade() -> bool:
 	if current_level >= max_level:
 		print("[Factory] Duvar/Fabrika zaten maksimum seviyede (", max_level, ").")
@@ -417,6 +507,7 @@ func upgrade() -> bool:
 	_apply_level_sprite()
 	_play_upgrade_effect()
 	_update_label_text()
+	_notify_price_updated()
 	return true
 
 

@@ -11,6 +11,7 @@ class_name Brick
 var _is_submerged: bool = false
 var _cached_fluid_water: Node = null
 var _audio_player: AudioStreamPlayer2D = null
+var is_consumed: bool = false
 
 
 func _ready() -> void:
@@ -20,6 +21,8 @@ func _ready() -> void:
 
 	contact_monitor = true
 	max_contacts_reported = 4
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
 
 	# Layer 2: Cargo layer (collides with ground Layer 1, but NOT water particles)
 	collision_layer = 2
@@ -122,3 +125,65 @@ func _play_spawn_effect() -> void:
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_property(sprite, "scale", target_scale, 0.35)
+
+
+func _on_body_entered(body: Node) -> void:
+	if is_consumed:
+		return
+	var house := _find_house_node(body)
+	if house and is_instance_valid(house):
+		consume_for_house(house)
+
+
+func _find_house_node(node: Node) -> Node2D:
+	if not node:
+		return null
+	if node.is_in_group("house") and node is Node2D:
+		return node as Node2D
+	var p := node.get_parent()
+	if p and p.is_in_group("house") and p is Node2D:
+		return p as Node2D
+	return null
+
+
+## Upgrades target house and consumes this brick (single-use)
+func consume_for_house(house: Node2D) -> bool:
+	if is_consumed:
+		return false
+	if not house or not is_instance_valid(house):
+		return false
+	if ("is_destroyed" in house and house.is_destroyed) or ("current_level" in house and "max_level" in house and house.current_level >= house.max_level):
+		return false
+
+	is_consumed = true
+	set_deferred("freeze", true)
+	remove_from_group("brick")
+	remove_from_group("cargo")
+	remove_from_group("grabbable")
+
+	# Detach from crane if held
+	var tree := get_tree()
+	if tree:
+		var crane = tree.get_first_node_in_group("crane")
+		if crane and "grabbed_body" in crane and crane.grabbed_body == self:
+			crane._release_cargo()
+
+	var success: bool = house.upgrade()
+	if not success:
+		is_consumed = false
+		set_deferred("freeze", false)
+		add_to_group("brick")
+		add_to_group("cargo")
+		add_to_group("grabbable")
+		return false
+
+	print("[Brick] Tuğla ", house.name, " evini yükseltti! (Lv.", house.current_level, "/", house.max_level, ")")
+
+	# Pop consume effect
+	var tw := create_tween().set_parallel(true)
+	tw.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "scale", scale * 1.35, 0.16)
+	tw.tween_property(self, "modulate", Color(1.5, 2.0, 1.5, 0.0), 0.22)
+	tw.chain().tween_callback(queue_free)
+	return true
+

@@ -39,6 +39,11 @@ var is_storm_sequence_running: bool = false
 signal storm_sequence_started
 signal storm_sequence_finished
 signal debug_mode_toggled(is_enabled: bool)
+signal money_changed(new_amount: int)
+
+@export_group("Economy Settings")
+## Current player money / coins
+@export var money: int = 0
 
 
 @export_group("Debug Settings")
@@ -280,7 +285,9 @@ func _get_cheat_sheet_bbcode() -> String:
 		" [color=#ffe082][b][3][/b][/color]    Açık / Güneşli Hava\n" +
 		" [color=#ffe082][b][L / F][/b][/color] Yıldırım / Şimşek Düşür\n\n" +
 		"[b][color=#81c784]── VİNÇ & DONANIM ──[/color][/b]\n" +
-		" [color=#ffe082][b][K][/b][/color]    Vinç Kanca ⇄ Roket (Tier 1/2)\n\n" +
+		" [color=#ffe082][b][K][/b][/color]    Vinç Roket Hızlandırma (Event Boost 15s)\n" +
+		" [color=#ffe082][b][F8][/b][/color]   Test: Event Rock (Elmas - 5s) Oluştur\n" +
+		" [color=#ffe082][b][F9][/b][/color]   Test: Para Ekle (+50$)\n\n" +
 		"[b][color=#ffb74d]── BİNALAR & SEVİYE SİSTEMİ ──[/color][/b]\n" +
 		" [color=#ffe082][b][H][/b][/color]    Test: Ev Seviyesini Yükselt (+1 Kat)\n" +
 		" [color=#ffe082][b][J][/b][/color]    Test: Eve Hasar Ver (-1 Kat Kır)\n\n" +
@@ -291,8 +298,8 @@ func _get_cheat_sheet_bbcode() -> String:
 		" [color=#e0e0e0][b][Q / E][/b][/color]    Vinç Kulesi Dönüşü\n" +
 		" [color=#e0e0e0][b][A / D][/b][/color]    Vinç Arabası İleri / Geri\n" +
 		" [color=#e0e0e0][b][SPACE][/b][/color]  Payload İndir / Kaldır / Bırak\n" +
-		" [color=#e0e0e0][b][SHIFT][/b][/color]  Fabrikadan Taş Üret\n" +
-		" [color=#e0e0e0][b][U][/b][/color]      Fabrikayı Yükselt"
+		" [color=#e0e0e0][b][SHIFT][/b][/color]  Fabrikayı Yükselt (Satın Al)\n" +
+		" [color=#e0e0e0][b][ESC][/b][/color]    Ses/Müzik Menüsü (Basılı Tut: Çık)"
 	)
 
 
@@ -433,6 +440,62 @@ func _unhandled_input(event: InputEvent) -> void:
 		if debug_mode and event.keycode == KEY_Y:
 			get_viewport().set_input_as_handled()
 			start_storm_sequence()
+
+		# Debug key: Press F8 to spawn an Event Rock (only if debug_mode is enabled)
+		if debug_mode and event.keycode == KEY_F8:
+			get_viewport().set_input_as_handled()
+			_spawn_debug_event_rock()
+
+		# Debug key: Press F9 to add money (+50$) (only if debug_mode is enabled)
+		if debug_mode and event.keycode == KEY_F9:
+			get_viewport().set_input_as_handled()
+			add_money(50)
+
+
+func get_money() -> int:
+	return money
+
+
+func add_money(amount: int) -> void:
+	if amount <= 0:
+		return
+	money += amount
+	money_changed.emit(money)
+	print("[GameManager] Para eklendi: +", amount, "$. Toplam Bakiye: ", money, "$")
+
+
+func spend_money(amount: int) -> bool:
+	if amount <= 0:
+		return true
+	if money < amount:
+		print("[GameManager] Yetersiz bakiye! İstenen: ", amount, "$, Mevcut: ", money, "$")
+		return false
+	money -= amount
+	money_changed.emit(money)
+	print("[GameManager] Para harcandı: -", amount, "$. Kalan Bakiye: ", money, "$")
+	return true
+
+
+func _spawn_debug_event_rock() -> void:
+	var tree := get_tree()
+	if not tree:
+		return
+	var factory = tree.get_first_node_in_group("factory")
+	if factory and factory.has_method("spawn_event_rock"):
+		factory.spawn_event_rock()
+		print("[GameManager] Debug F8: Fabrikada Event Rock oluşturuldu.")
+		return
+
+	# Fallback direct spawn
+	var scene_path := "res://Scenes/event_rock.tscn"
+	if ResourceLoader.exists(scene_path):
+		var rock_scene := load(scene_path) as PackedScene
+		if rock_scene:
+			var rock := rock_scene.instantiate() as RigidBody2D
+			rock.global_position = Vector2(383, 862)
+			var target_parent: Node = tree.current_scene if tree.current_scene else tree.root
+			target_parent.add_child(rock)
+			print("[GameManager] Debug F8: Event Rock sahneye doğrudan eklendi. Konum: ", rock.global_position)
 
 
 ## Registers the active WeatherSystem instance from the scene.

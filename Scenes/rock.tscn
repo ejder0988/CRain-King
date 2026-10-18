@@ -1,22 +1,21 @@
 [gd_scene format=3 uid="uid://ccyr57qatseto"]
 
 [ext_resource type="Texture2D" uid="uid://ddho0o83i5h6i" path="res://Sprites/rock.png" id="1_rock"]
-[ext_resource type="Script" path="res://Scripts/rock.gd" id="2_rock_script"]
+[ext_resource type="Script" uid="uid://tqey56bqdgmg" path="res://Scripts/rock.gd" id="2_rock_script"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_1"]
 radius = 30.0
 
-[node name="Rock" type="RigidBody2D" groups=["cargo", "grabbable", "rock"]]
+[node name="Rock" type="RigidBody2D" unique_id=586608442 groups=["cargo", "grabbable", "rock"]]
 collision_layer = 2
 mass = 6.0
 contact_monitor = true
 max_contacts_reported = 4
 script = ExtResource("2_rock_script")
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
-modulate = Color(0.85, 0.55, 0.2, 1)
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1603054389]
 scale = Vector2(4.8, 4.8)
 texture = ExtResource("1_rock")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1484278023]
 shape = SubResource("CircleShape2D_1")

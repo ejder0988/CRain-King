@@ -214,7 +214,7 @@ func set_pointer_visible(show: bool) -> void:
 	var p := _get_pointer_sprite()
 	if not p:
 		return
-	if is_destroyed or current_level <= 0:
+	if is_destroyed or current_level <= 0 or current_level >= max_level:
 		p.visible = false
 		return
 	update_pointer_position()
