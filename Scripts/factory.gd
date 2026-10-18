@@ -13,8 +13,6 @@ signal factory_upgraded(new_level: int)
 signal production_started()
 signal production_finished()
 signal brick_spawned(brick: RigidBody2D, level: int)
-signal upgrade_rock_spawned(rock: RigidBody2D, level: int)
-signal event_rock_spawned(rock: RigidBody2D, level: int)
 signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 
 @export_group("Upgrade Settings")
@@ -38,26 +36,10 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 @export var base_production_time: float = 3.0
 ## Production durations (in seconds) for each level (Level 1 to 5)
 @export var level_production_times: Array[float] = [3.0, 2.4, 1.8, 1.3, 0.8]
-## PackedScene of the Brick to spawn upon completion
+## PackedScene of the Brick to spawn upon completion (Fabrika sadece tuğla üretir)
 @export var brick_scene: PackedScene = preload("res://Scenes/brick.tscn")
-## PackedScene for normal rock fallback if needed
-@export var rock_scene: PackedScene = preload("res://Scenes/rock.tscn")
-## PackedScene for Upgrade Rock (Enderpearl) fallback
-@export var upgrade_rock_scene: PackedScene = preload("res://Scenes/upgrade_rock.tscn")
-## İlk seferde kesinlikle Tuğla (Brick) çıkar, sonraki seferlerde Event Rock olasılığı devreye girer
-@export var guaranteed_first_brick: bool = true
-## PackedScene for Event Rock (Enderpearl - 5s timer)
-@export var event_rock_scene: PackedScene = preload("res://Scenes/event_rock.tscn")
-## Probability of spawning an Event Rock (Fabrikadan sadece brick çıkması için 0.0)
-@export_range(0.0, 1.0, 0.05) var event_rock_chance: float = 0.0
 ## Global position where normal brick is spawned
 @export var spawn_position: Vector2 = Vector2(383, 862)
-
-@export_group("Upgrade Rock (Enderpearl) Settings")
-## Upgrade rock'ın ilk çıkış (spawn) konumu (arkaplanda başlar)
-@export var upgrade_rock_spawn_position: Vector2 = Vector2(230, 800)
-## Upgrade rock'ın havada süzülüp düşeceği (sekme başlangıç) hedef konumu
-@export var upgrade_rock_landing_position: Vector2 = Vector2(550, 890)
 
 @export_group("Factory Audio")
 ## Fabrika üretim yaparken aralıksız çalan ses (Looping machine/production sound)
@@ -68,16 +50,6 @@ signal rock_spawned(rock: RigidBody2D, level: int) # For backwards compatibility
 @export var produce_finished_sound: AudioStream = preload("res://Sounds/factory spit brick sounf effect.wav")
 ## Üretim bitiş sesi seviyesi (dB)
 @export var produce_finished_volume_db: float = 0.0
-## İlk fırlatmada yukarı doğru ivme / tepe yüksekliği
-@export var upgrade_rock_launch_height: float = 260.0
-## Fırlatma arkının süresi (saniye)
-@export var upgrade_rock_launch_duration: float = 1.25
-## Zıplama / sekme kuvveti
-@export var upgrade_rock_bounce_force: float = 420.0
-## İlk zıplamadan sonra yok olma süresi min (saniye)
-@export var upgrade_rock_lifetime_min: float = 5.0
-## İlk zıplamadan sonra yok olma süresi max (saniye)
-@export var upgrade_rock_lifetime_max: float = 7.0
 
 @export_group("Pointer Settings")
 ## When true, the tutorial pointer bobs up and down; when false, it remains stationary in place
@@ -344,83 +316,7 @@ func _instantiate_brick() -> RigidBody2D:
 	return null
 
 
-func _instantiate_upgrade_rock() -> RigidBody2D:
-	var rock: RigidBody2D = null
-	if upgrade_rock_scene:
-		rock = upgrade_rock_scene.instantiate() as RigidBody2D
-	elif ResourceLoader.exists("res://Scenes/upgrade_rock.tscn"):
-		var urs := load("res://Scenes/upgrade_rock.tscn") as PackedScene
-		if urs:
-			rock = urs.instantiate() as RigidBody2D
-	elif rock_scene:
-		rock = rock_scene.instantiate() as RigidBody2D
-	elif ResourceLoader.exists("res://Scenes/rock.tscn"):
-		var rs := load("res://Scenes/rock.tscn") as PackedScene
-		if rs:
-			rock = rs.instantiate() as RigidBody2D
 
-	if rock:
-		rock.add_to_group("rock")
-		rock.add_to_group("upgrade_rock")
-		rock.add_to_group("cargo")
-		rock.add_to_group("grabbable")
-		rock.set_meta("is_upgrade_rock", true)
-
-	return rock
-
-
-func _instantiate_event_rock() -> RigidBody2D:
-	var rock: RigidBody2D = null
-	if event_rock_scene:
-		rock = event_rock_scene.instantiate() as RigidBody2D
-	elif ResourceLoader.exists("res://Scenes/event_rock.tscn"):
-		var ers := load("res://Scenes/event_rock.tscn") as PackedScene
-		if ers:
-			rock = ers.instantiate() as RigidBody2D
-	elif rock_scene:
-		rock = rock_scene.instantiate() as RigidBody2D
-
-	if rock:
-		rock.add_to_group("rock")
-		rock.add_to_group("event_rock")
-		rock.add_to_group("cargo")
-		rock.add_to_group("grabbable")
-		rock.set_meta("is_event_rock", true)
-
-	return rock
-
-
-func spawn_event_rock(start_p: Vector2 = Vector2.INF, target_p: Vector2 = Vector2.INF) -> RigidBody2D:
-	var from_pos: Vector2 = start_p if start_p != Vector2.INF else upgrade_rock_spawn_position
-	var to_pos: Vector2 = target_p if target_p != Vector2.INF else upgrade_rock_landing_position
-	var rock := _instantiate_event_rock()
-	if rock:
-		var target_parent: Node = get_tree().current_scene if get_tree() else owner
-		if not target_parent:
-			target_parent = get_parent()
-		target_parent.add_child(rock)
-		var w = _find_fluid_water()
-		if w and w.has_method("add_collision_exception"):
-			w.add_collision_exception(rock)
-
-		if rock.has_method("launch_arc"):
-			if "bounce_force" in rock:
-				rock.bounce_force = upgrade_rock_bounce_force
-			if "lifetime_min" in rock:
-				rock.lifetime_min = upgrade_rock_lifetime_min
-			if "lifetime_max" in rock:
-				rock.lifetime_max = upgrade_rock_lifetime_max
-			rock.launch_arc(from_pos, to_pos, upgrade_rock_launch_height, upgrade_rock_launch_duration)
-		else:
-			rock.global_position = from_pos
-
-		event_rock_spawned.emit(rock, current_level)
-		print("[Factory] ★ Manuel Upgrade Rock fırlatıldı! Çıkış: ", from_pos, " -> Hedef: ", to_pos)
-	return rock
-
-
-func spawn_upgrade_rock(start_p: Vector2 = Vector2.INF, target_p: Vector2 = Vector2.INF) -> RigidBody2D:
-	return spawn_event_rock(start_p, target_p)
 
 
 

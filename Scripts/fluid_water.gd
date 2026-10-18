@@ -94,6 +94,25 @@ var _shape_large: CircleShape2D
 		foam_transparency = val
 		_set_water_shader_param("foam_transparency", val)
 
+@export_group("Tsunami Push & Force Settings")
+## Tsunami su itme açısı (Derece cinsinden: 45.0 = sola ve yukarı 45° açıyla çapraz fırlatma/itme)
+@export_range(0.0, 90.0, 1.0) var tsunami_push_angle_degrees: float = 45.0
+
+## Tsunami dalgası ilerlerken sulara uygulanan sürekli itme kuvveti
+@export var tsunami_push_force: float = 1450.0
+
+## Kavisli sahil ve yükselen tepecik bölgesinde uygulanan ekstra itme kuvveti (X: Duvar - 1980)
+@export var tsunami_coastal_push_force: float = 1750.0
+
+## Tsunami başladığı anda uygulanan ilk darbe/fırlatma kuvveti (Kickoff impulse)
+@export var tsunami_kickoff_impulse: float = 240.0
+
+## Tsunami dalgası sırasında suların yukarı doğru fırlayabileceği maksimum dikey hız limiti (px/s)
+@export var tsunami_max_upward_speed: float = 450.0
+
+## Tsunami dalgası sırasında suların sola doğru gidebileceği maksimum yatay hız limiti (px/s)
+@export var tsunami_max_horizontal_speed: float = 480.0
+
 @export_group("Mouse Interaction")
 ## Enable mouse pointer interaction to stir/push water
 @export var enable_pointer: bool = false
@@ -168,6 +187,22 @@ func _get_wall_x() -> float:
 	if sw and is_instance_valid(sw):
 		_cached_stone_wall_x = sw.global_position.x
 	return _cached_stone_wall_x
+
+
+## Tsunami itme açısına göre normalize edilmiş 2D yön vektörünü hesaplar (Varsayılan 45° = sola ve yukarı)
+func get_tsunami_push_direction() -> Vector2:
+	var rad: float = deg_to_rad(tsunami_push_angle_degrees)
+	return Vector2(-cos(rad), -sin(rad))
+
+
+## Tsunami itme açısını dinamik olarak değiştirmek için yardımcı fonksiyon
+func set_tsunami_push_angle(degrees: float) -> void:
+	tsunami_push_angle_degrees = degrees
+
+
+## Tsunami itme kuvvetini dinamik olarak değiştirmek için yardımcı fonksiyon
+func set_tsunami_push_force(force: float) -> void:
+	tsunami_push_force = force
 
 
 func _set_water_shader_param(param_name: String, value: Variant) -> void:
@@ -506,6 +541,7 @@ func _physics_process(delta: float) -> void:
 				_wave_curl_node.visible = false
 			if _tsunami_phase_timer <= 0.0:
 				_tsunami_phase = TsunamiPhase.IDLE
+				_tsunami_active = false
 
 	var mouse_pos := get_global_mouse_position()
 	var mouse_down := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
@@ -527,6 +563,22 @@ func _physics_process(delta: float) -> void:
 		for f in expired_rids:
 			_payload_released_particles.erase(f)
 
+	# Water KillBox önbelleği (Varsa killbox kontrollerini çok hızlı yapar)
+	var killboxes: Array = get_tree().get_nodes_in_group("water_killbox")
+	var has_killboxes: bool = not killboxes.is_empty()
+	if has_killboxes:
+		for kb in killboxes:
+			if kb.has_method("update_cached_bounds"):
+				kb.update_cached_bounds()
+
+	# Water PushBox önbelleği (Suyu belirlenen yöne iten alanlar)
+	var pushboxes: Array = get_tree().get_nodes_in_group("water_pushbox")
+	var has_pushboxes: bool = not pushboxes.is_empty()
+	if has_pushboxes:
+		for pb in pushboxes:
+			if pb.has_method("update_cached_bounds"):
+				pb.update_cached_bounds()
+
 	for i in range(objects.size() - 1, -1, -1):
 		var item: Array = objects[i]
 		var object: RID = item[0]
@@ -546,10 +598,39 @@ func _physics_process(delta: float) -> void:
 		var trans: Transform2D = trans_var
 		var world_pos := trans.origin
 
+		# 0. Killbox check: bu alana temas eden veya giren su anında yok edilir
+		if has_killboxes:
+			var in_killbox: bool = false
+			for kb in killboxes:
+				if kb.enabled and kb.contains_point(world_pos):
+					in_killbox = true
+					if "kill_count" in kb:
+						kb.kill_count += 1
+					if kb.has_signal("water_destroyed"):
+						kb.water_destroyed.emit(world_pos)
+					break
+			if in_killbox:
+				objects.remove_at(i)
+				if _held_particles.has(object):
+					_held_particles.erase(object)
+				if _payload_released_particles.has(object):
+					_payload_released_particles.erase(object)
+				ps.free_rid(object)
+				RenderingServer.free_rid(img)
+				continue
+
 		# Once payload-flung water lands on ground level (Y >= 800), lift quarantine
 		if _payload_released_particles.has(object):
 			if world_pos.y >= 800.0:
 				_payload_released_particles.erase(object)
+
+		# PushBox check: Parçacığın bir itme alanı içinde olup olmadığını tespit et
+		var active_pushbox = null
+		if has_pushboxes:
+			for pb in pushboxes:
+				if pb.enabled and pb.contains_point(world_pos):
+					active_pushbox = pb
+					break
 
 		# 1. Abyss kill check
 		if world_pos.y > kill_y:
@@ -576,10 +657,24 @@ func _physics_process(delta: float) -> void:
 
 
 
-		# 1. HARD VELOCITY CLAMP: Absolute safety clamp prevents water from rocketing skyward off slopes or walls
-		# Horizontal speed never exceeds -420.0 px/s; Upward vertical speed never exceeds -130.0 px/s!
-		var clamped_vx: float = clampf(cur_v.x, -420.0, 250.0)
-		var clamped_vy: float = clampf(cur_v.y, -130.0, 500.0)
+		# 1. HARD VELOCITY CLAMP: Absolute safety clamp prevents water from rocketing uncontrollably off slopes
+		# Tsunami dalgası sırasında 45 derecelik açıyla rahatça yükselebilmesi ve fırlayabilmesi için tavan dinamik olarak açılır
+		var is_tsunami_surging: bool = (_tsunami_phase == TsunamiPhase.ROLLING_WAVE or _tsunami_active)
+		var max_up: float = -tsunami_max_upward_speed if is_tsunami_surging else -130.0
+		var max_left: float = -tsunami_max_horizontal_speed if is_tsunami_surging else -420.0
+		var max_right: float = 250.0
+		var max_down: float = 500.0
+
+		# İtme kutusu içindeyken kutunun hız ve tavan sınırlarına dinamik izin ver
+		if active_pushbox != null:
+			var pb_limit: float = maxf(active_pushbox.max_exit_speed, active_pushbox.target_speed)
+			max_up = minf(max_up, -pb_limit)
+			max_left = minf(max_left, -pb_limit)
+			max_right = maxf(max_right, pb_limit)
+			max_down = maxf(max_down, pb_limit)
+
+		var clamped_vx: float = clampf(cur_v.x, max_left, max_right)
+		var clamped_vy: float = clampf(cur_v.y, max_up, max_down)
 		if clamped_vx != cur_v.x or clamped_vy != cur_v.y:
 			cur_v = Vector2(clamped_vx, clamped_vy)
 			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, cur_v)
@@ -634,7 +729,7 @@ func _physics_process(delta: float) -> void:
 
 		# 4. Sleeping particle optimization & Flattened Shallow Layer for Left Side:
 		var is_sleeping: bool = bool(ps.body_get_state(object, PhysicsServer2D.BODY_STATE_SLEEPING))
-		if not is_sleeping or active_disturbance:
+		if not is_sleeping or active_disturbance or active_pushbox != null:
 			var local_pos := trans.origin - global_position
 			if world_pos.x < wall_x and tier == WaterTier.SMALL:
 				# Zemine Yapışık Sığ Su Ölçeklemesi (Flattened Shallow Layer):
@@ -683,52 +778,32 @@ func _physics_process(delta: float) -> void:
 				var push_force: Vector2 = push_dir * 180.0 + payload_linear_vel * 0.4
 				ps.body_set_constant_force(object, push_force * mass_mult)
 				force_applied = true
-		# D. TSUNAMI 4-PHASE FORCES:
-		# Phase 1: DRAWBACK (sadece deniz tarafındaki suları sağa doğru çeker, şehirdeki sular yerinde kalır)
-		elif _tsunami_phase == TsunamiPhase.DRAWBACK and world_pos.x >= _cached_stone_wall_x and world_pos.x < 2350.0:
-			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_SLEEPING, false)
+		# D. Water PushBox (Alana giren her suyu belirlenen yönde iter)
+		elif active_pushbox != null:
+			if active_pushbox.wake_sleeping_water:
+				ps.body_set_state(object, PhysicsServer2D.BODY_STATE_SLEEPING, false)
 			var p_mass: float = particle_mass * mass_mult
-			var pull_force := Vector2(280.0 * p_mass, 25.0 * p_mass)
-			ps.body_set_constant_force(object, pull_force)
+			var push_dir: Vector2 = active_pushbox.get_effective_push_direction()
+			var push_force_vec: Vector2 = push_dir * active_pushbox.push_force * p_mass
+			ps.body_set_constant_force(object, push_force_vec)
 			force_applied = true
 
-		# Phase 2: ROLLING_WAVE (hareketli dalga cephesi ve sağ havuzdaki tüm su kütlesinin sola güçlü hücumu)
-		elif _tsunami_phase == TsunamiPhase.ROLLING_WAVE and world_pos.x >= (_cached_stone_wall_x - 30.0):
-			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_SLEEPING, false)
-			var p_mass: float = particle_mass * mass_mult
-			var push_x: float = -950.0 * p_mass
-			var push_y: float = -80.0 * p_mass # Kavisli sahili tırmanma desteği (hafif yukarı bias)
-
-			# Hafif kavisli ve yükselen zemin bölgesi (X: 1540 - 1980):
-			# Su kavisli tepecikte takılmasın diye tepeyi rahatça aşacak ekstra yukarı & sola itme verilir
-			if world_pos.x >= _cached_stone_wall_x and world_pos.x <= 1980.0:
-				push_x = -1200.0 * p_mass
-				push_y = -120.0 * p_mass
-
-			# Dalga tepe noktası (_wave_front_x etrafı)
-			if world_pos.x <= _wave_front_x + 80.0:
-				if world_pos.y > target_wave_crest_y:
-					push_y = minf(push_y, -90.0 * p_mass)
-				else:
-					push_y = 30.0 * p_mass
-
-			ps.body_set_constant_force(object, Vector2(push_x, push_y))
-			force_applied = true
-
-			# Yükseklik tavanı: parçacıklar aşırı gökyüzüne fırlamasın diye sadece dalga tavanını aşarsa yumuşakça yönlendir
-			if world_pos.y < (target_wave_crest_y - 30.0):
-				cur_v.y = maxf(cur_v.y, 10.0)
+			if active_pushbox.apply_velocity_boost:
+				var target_v: Vector2 = push_dir * active_pushbox.target_speed
+				if active_pushbox.cancel_opposing_velocity:
+					var dot: float = cur_v.dot(push_dir)
+					if dot < 0.0:
+						cur_v -= push_dir * dot
+				cur_v = cur_v.lerp(target_v, clampf(active_pushbox.velocity_blend, 0.01, 1.0))
+				if cur_v.length() > active_pushbox.max_exit_speed:
+					cur_v = cur_v.normalized() * active_pushbox.max_exit_speed
 				ps.body_set_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, cur_v)
 
-		# Phase 3 & 4: IMPACT & BACKWASH (dalga duvara vurduktan sonra suların sağa doğal geri çekilmesi)
-		elif _tsunami_phase == TsunamiPhase.BACKWASH and world_pos.x > _cached_stone_wall_x:
-			ps.body_set_state(object, PhysicsServer2D.BODY_STATE_SLEEPING, false)
-			var p_mass: float = particle_mass * mass_mult
-			var recede_force := Vector2(250.0 * p_mass, 20.0 * p_mass)
-			ps.body_set_constant_force(object, recede_force)
-			force_applied = true
-
-		if not force_applied and not _tsunami_active and _tsunami_phase == TsunamiPhase.IDLE:
+			if "push_count" in active_pushbox:
+				active_pushbox.push_count += 1
+			if active_pushbox.has_signal("water_pushed"):
+				active_pushbox.water_pushed.emit(world_pos, push_dir)
+		if not force_applied:
 			ps.body_set_constant_force(object, Vector2.ZERO)
 
 	if active_particle_count > 0:
@@ -908,6 +983,7 @@ func start_tsunami_drawback(duration: float = 2.0) -> void:
 
 ## Phase 2: ROLLING_WAVE - Ekran dışından gelip tuğla duvara doğru ilerleyen hareketli dalga cephesi (2.5s)
 func start_rolling_wave(duration: float = 2.5, cycle_level: int = 1) -> void:
+	_tsunami_active = true
 	_tsunami_phase = TsunamiPhase.ROLLING_WAVE
 	_tsunami_phase_timer = duration
 	_surge_cycle_level = clampi(cycle_level, 1, 24)
@@ -923,40 +999,20 @@ func start_rolling_wave(duration: float = 2.5, cycle_level: int = 1) -> void:
 	var wave_dist: float = maxf(_wave_start_x - _cached_stone_wall_x, 100.0)
 	_wave_travel_speed = wave_dist / maxf(duration, 0.5)
 
-	# Başlangıç İtme Desteği (Kickoff Impulse):
-	# Hafif kavisli kısımlarda suyun başlangıçta takılmasını engellemek için havuzdaki ve sahildeki
-	# tüm suları hemen uyandırıp sola ve hafif yukarıya doğru güçlü bir darbeyle fırlat
-	var ps := PhysicsServer2D
-	for item in objects:
-		var obj: RID = item[0]
-		if not obj.is_valid() or _held_particles.has(obj):
-			continue
-		var trans_var = ps.body_get_state(obj, PhysicsServer2D.BODY_STATE_TRANSFORM)
-		if trans_var == null:
-			continue
-		var p_pos: Vector2 = (trans_var as Transform2D).origin
-		if p_pos.x >= (_cached_stone_wall_x - 30.0):
-			ps.body_set_state(obj, PhysicsServer2D.BODY_STATE_SLEEPING, false)
-			var tier: int = item[2]
-			var mass_mult: float = 1.0 if tier == WaterTier.SMALL else (3.0 if tier == WaterTier.MEDIUM else 6.0)
-			var p_mass: float = particle_mass * mass_mult
-			# Güçlü başlangıç itmesi: sola doğru -170, yukarı doğru -45 (kavisli sahili rahatça tırmanması için)
-			ps.body_apply_central_impulse(obj, Vector2(-170.0 * p_mass, -45.0 * p_mass))
-
-	# Geçici dalga dolgunluk takviyesi (BACKWASH sırasında X > 1950'ye dönünce silinir)
+	# Geçici dalga dolgunluk takviyesi (Sadece su eklemeye devam eder)
 	var boost_count: int = mini(18 + _surge_cycle_level * 4, 50)
 	for b in range(boost_count):
 		if max_particles > 0 and objects.size() >= max_particles:
 			break
 		var bx: float = randf_range(2040.0, 2240.0)
 		var by: float = randf_range(810.0, 890.0)
-		var bv: Vector2 = Vector2(randf_range(-140.0, -80.0), randf_range(-30.0, 10.0))
+		var bv: Vector2 = Vector2(randf_range(-20.0, 0.0), randf_range(10.0, 40.0))
 		var tier: int = WaterTier.SMALL if randf() > 0.3 else WaterTier.MEDIUM
 		var obj_rid := create_object(Vector2(bx, by), bv, tier)
 		if obj_rid.is_valid():
 			_temp_boost_particles[obj_rid] = true
 
-	print("[FluidWater] Tsunami ROLLING_WAVE başladı! Seviye: %d/24 | X: %.1f -> %.1f | Hız: %.1f px/s | Takviye: +%d" % [_surge_cycle_level, _wave_front_x, _cached_stone_wall_x, _wave_travel_speed, boost_count])
+	print("[FluidWater] Tsunami ROLLING_WAVE başladı! Seviye: %d/24 | X: %.1f -> %.1f | Takviye Su: +%d" % [_surge_cycle_level, _wave_front_x, _cached_stone_wall_x, boost_count])
 
 
 ## Phase 3: IMPACT - Dalga duvara vurduğunda duvar seviyesi ve çarpma kontrolü

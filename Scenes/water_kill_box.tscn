@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://bhja71o1mf7b5"]
+
+[ext_resource type="Script" uid="uid://cypj8killboxsc" path="res://Scripts/water_kill_box.gd" id="1_killbox"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_killbox"]
+size = Vector2(250, 100)
+
+[node name="WaterKillBox" type="Area2D" groups=["water_killbox"]]
+script = ExtResource("1_killbox")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_killbox")

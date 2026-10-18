@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://dhfq0fhtqofji"]
+
+[ext_resource type="Script" uid="uid://djx18pushboxsc" path="res://Scripts/water_push_box.gd" id="1_pushbox"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_pushbox"]
+size = Vector2(250, 100)
+
+[node name="WaterPushBox" type="Area2D" groups=["water_pushbox"]]
+script = ExtResource("1_pushbox")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_pushbox")

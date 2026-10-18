@@ -13,6 +13,10 @@ signal wall_completed
 @export var max_stages: int = 24
 ## Current construction stage (0: not started, 1..24: layers built)
 @export var current_stage: int = 0
+## Her bir tuğlanın duvara kattığı kat / seviye miktarı (İkili sayılacak: Varsayılan 2)
+@export var brick_stage_value: int = 2
+## İkili ekleme sırasındaki katlar arası gecikme süresi (saniye, Varsayılan: 0.3s)
+@export var brick_upgrade_delay: float = 0.3
 ## Duvarın başlangıç collision yüksekliği (piksel, Varsayılan: 5.0)
 @export var base_collision_height: float = 5.0
 ## Her seviye / tuğla başına collision yüksekliğinin artış miktarı (piksel, Varsayılan: 5.0)
@@ -49,6 +53,8 @@ var _base_pointer_pos: Vector2 = Vector2(-1.5, 42.0)
 var _base_pointer_scale: Vector2 = Vector2(2.56, 1.87)
 var _build_player: AudioStreamPlayer2D = null
 var _laugh_player: AudioStreamPlayer2D = null
+var _pending_brick_upgrades: int = 0
+var _is_applying_brick_delay: bool = false
 
 # Frame width in wallbuild.png (1152 / 24 = 48)
 const FRAME_WIDTH: int = 48
@@ -166,14 +172,18 @@ func _on_drop_zone_body_entered(body: Node) -> void:
 			_reject_rock(body)
 
 
-## Deposits a brick onto the wall, advancing the construction stage
+## Deposits a brick onto the wall, advancing the construction stage (ikili sayılır ve gecikmeli olarak arka arkaya eklenir)
 func place_brick(brick_body: Node2D) -> bool:
-	if current_stage >= max_stages:
+	if current_stage >= max_stages and _pending_brick_upgrades <= 0:
 		print("[StoneWall] Duvar zaten maksimum seviyede (24/24)!")
 		return false
 
 	# Consume the brick
 	if is_instance_valid(brick_body):
+		if brick_body.has_meta("wall_consumed") and brick_body.get_meta("wall_consumed"):
+			return false
+		brick_body.set_meta("wall_consumed", true)
+
 		# Detach from crane if held
 		var tree := get_tree()
 		if tree:
@@ -190,6 +200,39 @@ func place_brick(brick_body: Node2D) -> bool:
 				brick_body.queue_free()
 		)
 
+	# Tuğla ikili sayılacak: sıraya 2 kat yükseltme ekle ve gecikmeli olarak arka arkaya işlet
+	_pending_brick_upgrades += max(brick_stage_value, 1)
+	if not _is_applying_brick_delay:
+		_process_pending_brick_upgrades()
+
+	return true
+
+
+func _process_pending_brick_upgrades() -> void:
+	if not is_inside_tree() or current_stage >= max_stages or _pending_brick_upgrades <= 0:
+		_pending_brick_upgrades = 0
+		_is_applying_brick_delay = false
+		return
+
+	_is_applying_brick_delay = true
+	_pending_brick_upgrades -= 1
+	_apply_single_stage_upgrade()
+
+	if _pending_brick_upgrades > 0 and current_stage < max_stages:
+		var tree := get_tree()
+		if tree:
+			tree.create_timer(brick_upgrade_delay).timeout.connect(_process_pending_brick_upgrades)
+		else:
+			_process_pending_brick_upgrades()
+	else:
+		_pending_brick_upgrades = 0
+		_is_applying_brick_delay = false
+
+
+func _apply_single_stage_upgrade() -> void:
+	if current_stage >= max_stages:
+		return
+
 	current_stage += 1
 	_update_wall_state(true)
 	stage_changed.emit(current_stage, max_stages)
@@ -197,13 +240,11 @@ func place_brick(brick_body: Node2D) -> bool:
 	_play_wall_build_audio()
 	_play_random_laugh_audio()
 
-	print("[StoneWall] Tuğla duvara yerleştirildi! Duvar seviyesi: ", current_stage, "/", max_stages)
+	print("[StoneWall] 🧱 Tuğla katı örüldü! Duvar seviyesi: %d/%d (Collision H: %.1f px)" % [current_stage, max_stages, get_wall_height_local()])
 
 	if current_stage >= max_stages:
 		wall_completed.emit()
-		print("[StoneWall] TEBRİKLER! Duvar tamamen örüldü (24/24)! Şehir sulara karşı koruma altında!")
-
-	return true
+		print("[StoneWall] 🏆 TEBRİKLER! Duvar tamamen örüldü (24/24)! Şehir sulara karşı koruma altında!")
 
 
 ## Debug test: Duvar seviyesini 1 artırır (+1 stage)

@@ -557,11 +557,7 @@ func _spawn_debug_event_rock() -> void:
 		print("[GameManager] Debug [V / F8]: Yanardağ Patlaması, Büyük Deprem ve Meteor Tetiklendi!")
 		return
 
-	var factory = tree.get_first_node_in_group("factory")
-	if factory and factory.has_method("spawn_event_rock"):
-		factory.spawn_event_rock()
-		print("[GameManager] Debug [F8]: Fabrikada Event Rock oluşturuldu.")
-		return
+
 
 	# Fallback direct spawn
 	var scene_path := "res://Scenes/event_rock.tscn"

@@ -140,6 +140,20 @@ func _physics_process(_delta: float) -> void:
 	var mouse_down := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 	var icon_scale := _icon_node.scale.x if _icon_node and is_instance_valid(_icon_node) else 1.0
 
+	var killboxes: Array = get_tree().get_nodes_in_group("water_killbox")
+	var has_killboxes: bool = not killboxes.is_empty()
+	if has_killboxes:
+		for kb in killboxes:
+			if kb.has_method("update_cached_bounds"):
+				kb.update_cached_bounds()
+
+	var pushboxes: Array = get_tree().get_nodes_in_group("water_pushbox")
+	var has_pushboxes: bool = not pushboxes.is_empty()
+	if has_pushboxes:
+		for pb in pushboxes:
+			if pb.has_method("update_cached_bounds"):
+				pb.update_cached_bounds()
+
 	for i in range(objects.size() - 1, -1, -1):
 		var pair = objects[i]
 		var object: RID = pair[0]
@@ -147,7 +161,18 @@ func _physics_process(_delta: float) -> void:
 		var trans: Transform2D = PhysicsServer2D.body_get_state(object, PhysicsServer2D.BODY_STATE_TRANSFORM)
 		var world_pos := trans.origin
 
-		if world_pos.y > kill_y or world_pos.x < -200 or world_pos.x > 4000:
+		var in_killbox: bool = false
+		if has_killboxes:
+			for kb in killboxes:
+				if kb.enabled and kb.contains_point(world_pos):
+					in_killbox = true
+					if "kill_count" in kb:
+						kb.kill_count += 1
+					if kb.has_signal("water_destroyed"):
+						kb.water_destroyed.emit(world_pos)
+					break
+
+		if in_killbox or world_pos.y > kill_y or world_pos.x < -200 or world_pos.x > 4000:
 			objects.remove_at(i)
 			PhysicsServer2D.free_rid(object)
 			RenderingServer.free_rid(img)
@@ -156,9 +181,24 @@ func _physics_process(_delta: float) -> void:
 			local_trans.origin -= global_position
 			RenderingServer.canvas_item_set_transform(img, local_trans)
 
+			var active_pushbox = null
+			if has_pushboxes:
+				for pb in pushboxes:
+					if pb.enabled and pb.contains_point(world_pos):
+						active_pushbox = pb
+						break
+
 			if mouse_down and not pointer and mouse_pos.distance_to(world_pos) < 60.0 * icon_scale:
 				var dir := (mouse_pos - world_pos).normalized()
 				PhysicsServer2D.body_set_constant_force(object, dir * attrForce)
+			elif active_pushbox != null:
+				var p_dir: Vector2 = active_pushbox.get_effective_push_direction()
+				PhysicsServer2D.body_set_constant_force(object, p_dir * active_pushbox.push_force * 0.1)
+				if active_pushbox.apply_velocity_boost:
+					var cur_v = PhysicsServer2D.body_get_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY)
+					if cur_v != null:
+						var target_v: Vector2 = p_dir * active_pushbox.target_speed
+						PhysicsServer2D.body_set_state(object, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, cur_v.lerp(target_v, active_pushbox.velocity_blend))
 			else:
 				PhysicsServer2D.body_set_constant_force(object, Vector2.ZERO)
 

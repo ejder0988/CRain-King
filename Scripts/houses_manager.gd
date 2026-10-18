@@ -29,9 +29,11 @@ signal game_over
 @export var flood_damage_cooldown: float = 1.2
 
 @export_group("Debris Settings")
+## Evler yıkıldığında veya kat kırıldığında fiziksel enkaz/tuğla parçalarının saçılmasını kontrol eder (Kullanıcı isteğiyle kapatıldı)
+@export var spawn_debris_on_break: bool = false
 ## Number of debris fragments spawned per collapsed house or broken floor
-@export var debris_count_min: int = 6
-@export var debris_count_max: int = 10
+@export var debris_count_min: int = 0
+@export var debris_count_max: int = 0
 ## Outward horizontal scatter speed of debris
 @export var debris_scatter_h: float = 75.0
 ## Upward launch speed of debris
@@ -146,7 +148,7 @@ func _on_house_level_changed(_new_lvl: int, _max_lvl: int) -> void:
 
 
 func _on_house_floor_broken(house: Node2D, broken_floor: int, remaining_level: int) -> void:
-	if is_instance_valid(house):
+	if spawn_debris_on_break and is_instance_valid(house):
 		var bounds := _get_house_bounds(house)
 		_spawn_house_debris(house, bounds)
 	_update_health_hud()
@@ -161,8 +163,9 @@ func _on_house_destroyed(house: Node2D) -> void:
 	_damage_cooldown_until.erase(house)
 
 	if is_instance_valid(house):
-		var bounds := _get_house_bounds(house)
-		_spawn_house_debris(house, bounds)
+		if spawn_debris_on_break:
+			var bounds := _get_house_bounds(house)
+			_spawn_house_debris(house, bounds)
 		house_destroyed.emit(house, h_name)
 
 	_update_health_hud()
@@ -201,7 +204,8 @@ func _finish_house_collapse(house: StaticBody2D, bounds: Dictionary) -> void:
 	var h_name := house.name
 	print("Ev yıkıldı: ", h_name)
 	house_destroyed.emit(house, h_name)
-	_spawn_house_debris(house, bounds)
+	if spawn_debris_on_break:
+		_spawn_house_debris(house, bounds)
 
 	_managed_houses.erase(house)
 	_submerged_timers.erase(house)
@@ -413,6 +417,9 @@ func restart_game() -> void:
 
 ## Enkaz parçaları saçar
 func _spawn_house_debris(_house: StaticBody2D, bounds: Dictionary) -> void:
+	if not spawn_debris_on_break or debris_count_max <= 0:
+		return
+
 	var root_node := get_tree().current_scene
 	if not root_node:
 		root_node = owner if owner else get_parent()

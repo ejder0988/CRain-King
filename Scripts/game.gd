@@ -77,6 +77,9 @@ class_name GameController
 ## Sel ve yağmur başlamadan kaç saniye önce sağdaki kırmızı uyarının yanıp sönmeye başlayacağı (saniye)
 @export var warning_lead_time: float = 6.0
 
+## Ekranın sağındaki ince kırmızı uyarı çizgisinin genişliği (piksel, Varsayılan: 15px)
+@export var warning_line_width: float = 15.0
+
 ## Sel vuruşundan kaç saniye sonra evlerin hayatta kalma durumu kontrol edilip para ödülü verileceği (saniye)
 @export var post_surge_evaluation_delay: float = 3.5
 
@@ -100,6 +103,9 @@ class_name GameController
 
 ## Suların sol tarafa (evlere doğru) vurma itme kuvveti
 @export var flood_surge_force: float = 1450.0
+
+## Tsunami itme açısı (Derece cinsinden: 45.0 = sola ve yukarı 45° çapraz itme)
+@export_range(0.0, 90.0, 1.0) var tsunami_push_angle_degrees: float = 45.0
 
 ## Dalga sol tarafa vururken yukarı doğru verilme açısı/bileşeni (-Y yönü)
 @export_range(0.0, 1.0, 0.05) var flood_surge_upward_bias: float = 0.35
@@ -140,8 +146,17 @@ class_name GameController
 @export var use_floor_levels_as_multiplier: bool = true
 
 @export_group("Meteor & Volcano Event")
+## Volkan patlamasının başlaması için geçilmesi gereken minimum tsunami sayısı (Varsayılan: 2 tsunami)
+@export var min_tsunamis_before_volcano: int = 2
+
 ## Kaç dalgada bir volkanın burst animasyonu oynatıp meteor fırlatacağı (Varsayılan: her 2 dalgada bir)
 @export var meteor_wave_interval: int = 2
+
+## Yanardağ patlaması öncesindeki deprem sallanma süresi (Daha kısa: Varsayılan 1.5s)
+@export var earthquake_duration: float = 1.5
+
+## Yanardağ patlaması öncesindeki deprem sallanma şiddeti (Daha az: Varsayılan 12.0px)
+@export var earthquake_intensity: float = 12.0
 
 ## Meteorun düşebileceği alanın minimum X koordinatı (Kullanıcı tarafından belirlenir)
 @export var meteor_landing_min_x: float = 430.0
@@ -192,12 +207,16 @@ var _is_urgent_warning: bool = false
 var _total_waves_in_current_tsunami: int = 1
 var _current_wave_index: int = 1
 var _total_surged_waves_count: int = 0
+var _completed_tsunamis_count: int = 0
+var _waves_after_volcano_unlocked: int = 0
+var _initial_volcano_triggered: bool = false
 
 # Volcano reference
 @onready var volcano: AnimatedSprite2D = get_node_or_null("volcano") as AnimatedSprite2D
 
 # UI Nodes
 var _flood_ui_layer: CanvasLayer = null
+var _warning_gradient_rect: TextureRect = null
 var _warning_panel: PanelContainer = null
 var _warning_title_lbl: Label = null
 var _warning_subtitle_lbl: Label = null
@@ -241,6 +260,7 @@ func _ready() -> void:
 	_setup_flood_ui()
 	_setup_volcano()
 	_setup_finish_system()
+	set_water_pushboxes_enabled(false)
 
 	if enable_intro_curtain:
 		var start_delay := maxf(intro_wait_delay + intro_fade_duration, 0.8)
@@ -487,16 +507,25 @@ func _process_flood_cycle(delta: float) -> void:
 				_cycle_timer = 0.0
 				_flood_state = FloodState.COUNTDOWN
 
+				# 2 tsunami geçildikten sonra volkan patlaması ve meteor olayı başlar
+				if _completed_tsunamis_count >= min_tsunamis_before_volcano and not _initial_volcano_triggered:
+					_initial_volcano_triggered = true
+					print("[Volcano] 🌋 2 tsunami başarıyla geçildi! Yanardağ patlaması ve ilk meteor inişi başlıyor!")
+					get_tree().create_timer(0.6).timeout.connect(trigger_volcano_meteor_event)
+
 
 
 func _process_warning_flash(delta: float) -> void:
-	if not _is_warning_flashing or not _warning_panel or not _warning_panel.visible:
+	if not _is_warning_flashing:
 		return
 	_warning_flash_timer += delta
-	var speed: float = 14.0 if _is_urgent_warning else 7.0
+	var speed: float = 12.0 if _is_urgent_warning else 6.0
 	var pulse: float = (sin(_warning_flash_timer * speed) + 1.0) * 0.5
-	_warning_panel.modulate.a = lerpf(0.35, 1.0, pulse)
-	_warning_panel.scale = Vector2.ONE * lerpf(0.97, 1.03, pulse)
+
+	# Sağ taraftaki ince kırmızı çizgi uyarısının nabız atışı
+	if _warning_gradient_rect and _warning_gradient_rect.visible:
+		var min_a: float = 0.25 if not _is_urgent_warning else 0.45
+		_warning_gradient_rect.modulate.a = lerpf(min_a, 1.0, pulse)
 
 
 ## 1. Yağmur Aşaması: Downpour Y tuşu sekansındaki gibi ekranın sağından (bir kısmından) yavaşça süpürerek ve ses gecikmesiyle girer
@@ -504,6 +533,7 @@ func _start_first_rain_phase() -> void:
 	_flood_state = FloodState.FIRST_RAIN
 	_show_warning_ui(true)
 	_play_tsunami_alarm()
+	set_water_pushboxes_enabled(true)
 
 	# Her yeni tsunamide dalga sayısını kademeli olarak hesapla (kullanıcı tarafından ayarlanabilir)
 	_total_waves_in_current_tsunami = clampi(
@@ -562,8 +592,7 @@ func _trigger_flood_surge() -> void:
 		_current_wave_index = 1
 		_current_flood_cycle += 1
 
-	_hide_warning_ui()
-	_stop_tsunami_alarm()
+	set_water_pushboxes_enabled(true)
 	_play_surge_sound()
 
 	var ws := _find_weather_system()
@@ -573,6 +602,10 @@ func _trigger_flood_surge() -> void:
 	# Geriden gelen hareketli tsunami dalgası (ASLA kalıcı su eklenmez! fw.max_particles arttırılmaz!)
 	var fw: FluidWater = _find_fluid_water()
 	if fw:
+		if "tsunami_push_angle_degrees" in fw:
+			fw.tsunami_push_angle_degrees = tsunami_push_angle_degrees
+		if "tsunami_push_force" in fw and flood_surge_force > 0.0:
+			fw.tsunami_push_force = flood_surge_force
 		if fw.has_method("start_rolling_wave"):
 			fw.start_rolling_wave(surge_wave_duration, _current_flood_cycle)
 		elif fw.has_method("start_controlled_surge"):
@@ -622,26 +655,50 @@ func _on_volcano_animation_finished() -> void:
 
 func _on_wave_completed() -> void:
 	_total_surged_waves_count += 1
-	print("[FloodCycle] 🌊 Dalga tamamlandı! (Bu tsunamide: %d/%d | Toplam vurulan dalga: %d)" % [_current_wave_index, _total_waves_in_current_tsunami, _total_surged_waves_count])
+	print("[FloodCycle] 🌊 Dalga tamamlandı! (Bu tsunamide: %d/%d | Toplam vurulan dalga: %d | Geçilen tsunami: %d/%d)" % [
+		_current_wave_index, _total_waves_in_current_tsunami, _total_surged_waves_count, _completed_tsunamis_count, min_tsunamis_before_volcano
+	])
 
-	# Her iki (veya kullanıcının belirlediği meteor_wave_interval) dalgadan sonra volkan patlaması ve meteor tetikle
-	if _total_surged_waves_count % max(meteor_wave_interval, 1) == 0:
-		trigger_volcano_meteor_event()
+	# Volkan patlaması sadece 2 tsunami geçildikten sonra başlayacak
+	if _completed_tsunamis_count >= min_tsunamis_before_volcano:
+		_waves_after_volcano_unlocked += 1
+		if _waves_after_volcano_unlocked % max(meteor_wave_interval, 1) == 0:
+			trigger_volcano_meteor_event()
+	else:
+		print("[Volcano] 🌋 Volkan henüz aktif değil (Geçilen tsunami: %d/%d). 2 tsunami geçildikten sonra başlayacak." % [
+			_completed_tsunamis_count, min_tsunamis_before_volcano
+		])
 
 
-## Her 2 dalgadan sonra volkanın burst yapıp belirlenen alana meteor fırlatmasını sağlar ve büyük deprem tetikler
+## Yanardağ patlaması dizisi:
+## 1. Adım: Deprem sallanması başlar (daha az ve daha kısa). Volkan bu sırada gizlidir.
+## 2. Adım: Sallanma tamamen biter, ardından volkan görünür olur ve "burst" animasyonu oynar (ses efekti ile).
+## 3. Adım: Volkan animasyonu biter bitmez gizlenir ve event rock yukarıdan ekran dışından hızla düşmeye başlar.
 func trigger_volcano_meteor_event() -> void:
-	print("[Volcano] ★ Yanardağ Patlaması, Deprem ve Meteor Tetiklendi!")
+	print("[Volcano] ★ 1. AŞAMA: Deprem sallanması başladı (Daha kısa ve hafif: %.1fs, %.1fpx)!" % [earthquake_duration, earthquake_intensity])
 
-	# 1. BÜYÜK DEPREM: Ekran çok fazla sallanır (Deprem efekti)
-	trigger_earthquake_screen_shake(4.2, 32.0)
+	if not volcano:
+		volcano = get_node_or_null("volcano") as AnimatedSprite2D
+	if volcano:
+		volcano.visible = false
 
-	# 2. CRANE İÇİNDEKİ IDLE SHAKE SPRİTE'LARI ÇOK DAHA FAZLA SALLANIR!
+	# 1. DEPREM: Ekran hafif ve kısa süreli sallanır (daha az ve daha kısa)
+	trigger_earthquake_screen_shake(earthquake_duration, earthquake_intensity)
+
+	# 2. CRANE: Dağ/kara parçaları da depremle birlikte orantılı sallanır
 	var crane := _find_crane()
 	if crane and crane.has_method("trigger_earthquake_shake"):
-		crane.trigger_earthquake_shake(4.2, 24.0)
+		crane.trigger_earthquake_shake(earthquake_duration, earthquake_intensity * 0.7)
 
-	# 3. Volkan patlama sesi
+	# Deprem sallanması bittikten sonra volkan animasyonu başlayacak
+	get_tree().create_timer(earthquake_duration).timeout.connect(_start_volcano_burst_phase)
+
+
+## Deprem bittikten sonra çağrılır: Volkan animasyonu oynar
+func _start_volcano_burst_phase() -> void:
+	print("[Volcano] ★ 2. AŞAMA: Deprem bitti! Volkan patlaması ve burst animasyonu başlıyor!")
+
+	# Volkan patlama sesi
 	if volcano_burst_sound:
 		var burst_player := AudioStreamPlayer2D.new()
 		burst_player.bus = "SFX" if AudioServer.get_bus_index("SFX") != -1 else "Master"
@@ -652,33 +709,41 @@ func trigger_volcano_meteor_event() -> void:
 		burst_player.play()
 		burst_player.finished.connect(burst_player.queue_free)
 
-	# 4. Volkan AnimatedSprite2D görünür yap ve burst animasyonu oynat
+	# Volkan AnimatedSprite2D görünür yap ve burst animasyonu oynat
 	if not volcano:
 		volcano = get_node_or_null("volcano") as AnimatedSprite2D
 	if volcano:
+		if not volcano.animation_finished.is_connected(_on_volcano_animation_finished):
+			volcano.animation_finished.connect(_on_volcano_animation_finished)
 		volcano.visible = true
 		if volcano.sprite_frames and volcano.sprite_frames.has_animation("burst"):
 			volcano.play("burst")
 		else:
-			# Eğer burst animasyonu yoksa yedek zamanlayıcı ile meteoru düşür
-			get_tree().create_timer(0.35).timeout.connect(_spawn_sky_event_rock)
+			# Eğer burst animasyonu yoksa doğrudan meteoru düşür
+			_on_volcano_animation_finished()
 	else:
-		get_tree().create_timer(0.35).timeout.connect(_spawn_sky_event_rock)
+		# Sahne içinde volcano düğümü yoksa doğrudan meteoru düşür
+		_spawn_sky_event_rock()
 
 
-## Yanardağ patlaması depremi: Ekranı çok şiddetli sallar, deprem bittiğinde pürüzsüzce eski haline döner
-func trigger_earthquake_screen_shake(duration: float = 4.2, intensity: float = 32.0) -> void:
+## Yanardağ patlaması depremi: Ekranı sallar, deprem bittiğinde pürüzsüzce eski merkezine (ZERO) döner
+func trigger_earthquake_screen_shake(duration: float = -1.0, intensity: float = -1.0) -> void:
+	if duration <= 0.0:
+		duration = earthquake_duration
+	if intensity <= 0.0:
+		intensity = earthquake_intensity
+
 	var viewport := get_viewport()
 	if not viewport:
 		return
 	var cam: Camera2D = viewport.get_camera_2d()
 	if cam and is_instance_valid(cam):
 		var tw := cam.create_tween()
-		var steps: int = int(duration / 0.07)
+		var steps: int = int(duration / 0.06)
 		var step_dur: float = duration / float(max(steps, 1))
 		for i in range(steps):
 			var progress: float = float(i) / float(steps)
-			# Başlangıçta aşırı şiddetli sarsıntı, zamanla sönümlenen gerçek deprem eğrisi
+			# Zamanla sönümlenen gerçekçi deprem eğrisi
 			var damp: float = pow(1.0 - progress, 0.72)
 			var shake_offset := Vector2(
 				randf_range(-intensity, intensity) * damp,
@@ -686,13 +751,13 @@ func trigger_earthquake_screen_shake(duration: float = 4.2, intensity: float = 3
 			)
 			tw.tween_property(cam, "offset", shake_offset, step_dur).set_trans(Tween.TRANS_SINE)
 		# Deprem bitince pürüzsüzce eski merkezine (ZERO) dön
-		tw.tween_property(cam, "offset", Vector2.ZERO, 0.35).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(cam, "offset", Vector2.ZERO, 0.2).set_trans(Tween.TRANS_SINE)
 	else:
 		# Fallback if no active Camera2D: shake root scene
 		var root_scene := get_tree().current_scene
 		if root_scene:
 			var tw := root_scene.create_tween()
-			var steps: int = int(duration / 0.07)
+			var steps: int = int(duration / 0.06)
 			var step_dur: float = duration / float(max(steps, 1))
 			for i in range(steps):
 				var progress: float = float(i) / float(steps)
@@ -702,7 +767,7 @@ func trigger_earthquake_screen_shake(duration: float = 4.2, intensity: float = 3
 					randf_range(-intensity * 0.5, intensity * 0.5) * damp
 				)
 				tw.tween_property(root_scene, "position", shake_offset, step_dur).set_trans(Tween.TRANS_SINE)
-			tw.tween_property(root_scene, "position", Vector2.ZERO, 0.35).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(root_scene, "position", Vector2.ZERO, 0.2).set_trans(Tween.TRANS_SINE)
 
 
 func _find_crane() -> Node:
@@ -779,7 +844,14 @@ func _start_rain_phase() -> void:
 
 func _evaluate_flood_survival_and_reward() -> void:
 	_flood_state = FloodState.EVALUATING
+	_stop_tsunami_alarm()
+	_hide_warning_ui()
+	set_water_pushboxes_enabled(false)
 	_play_tsunami_end_alarm()
+	_completed_tsunamis_count += 1
+	print("[FloodCycle] 🏆 Tsunami #%d başarıyla savuşturuldu/geçildi! (Toplam Geçilen Tsunami: %d / Volkan için Gereken: %d)" % [
+		_current_flood_cycle, _completed_tsunamis_count, min_tsunamis_before_volcano
+	])
 
 	var hm := _find_houses_manager()
 	var standing_houses_list: Array[StaticBody2D] = []
@@ -965,65 +1037,37 @@ func _setup_flood_ui() -> void:
 	_flood_ui_layer.layer = 95
 	add_child(_flood_ui_layer)
 
-	# 1. Sağ Taraftaki Kırmızı Yanıp Sönen Sel Uyarısı Paneli
-	_warning_panel = PanelContainer.new()
-	_warning_panel.name = "FloodWarningPanel"
-	_warning_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	_warning_panel.offset_left = -280.0
-	_warning_panel.offset_right = -20.0
-	_warning_panel.offset_top = -65.0
-	_warning_panel.offset_bottom = 65.0
-	_warning_panel.custom_minimum_size = Vector2(250.0, 95.0)
-	_warning_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_warning_panel.visible = false
+	# 1. Ekranın Sağ Tarafında İnce Kırmızı Çizgi Uyarısı (Örn: 15px)
+	_warning_gradient_rect = TextureRect.new()
+	_warning_gradient_rect.name = "WarningGradientEdge"
+	_warning_gradient_rect.anchor_left = 1.0
+	_warning_gradient_rect.anchor_right = 1.0
+	_warning_gradient_rect.anchor_top = 0.0
+	_warning_gradient_rect.anchor_bottom = 1.0
+	_warning_gradient_rect.offset_left = -warning_line_width
+	_warning_gradient_rect.offset_right = 0.0
+	_warning_gradient_rect.offset_top = 0.0
+	_warning_gradient_rect.offset_bottom = 0.0
+	_warning_gradient_rect.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_warning_gradient_rect.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_warning_gradient_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_warning_gradient_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	_warning_gradient_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_warning_gradient_rect.visible = false
 
-	var warn_style := StyleBoxFlat.new()
-	warn_style.bg_color = Color(0.12, 0.02, 0.04, 0.94)
-	warn_style.set_border_width_all(2)
-	warn_style.border_color = Color(1.0, 0.22, 0.22, 0.95)
-	warn_style.set_corner_radius_all(10)
-	warn_style.content_margin_left = 14
-	warn_style.content_margin_right = 14
-	warn_style.content_margin_top = 8
-	warn_style.content_margin_bottom = 8
-	warn_style.shadow_size = 12
-	warn_style.shadow_color = Color(0.9, 0.0, 0.0, 0.45)
-	_warning_panel.add_theme_stylebox_override("panel", warn_style)
+	var grad := Gradient.new()
+	grad.set_color(0, Color(1.0, 0.05, 0.05, 0.0))
+	grad.add_point(0.35, Color(1.0, 0.05, 0.08, 0.45))
+	grad.set_color(1, Color(1.0, 0.0, 0.02, 0.95))
 
-	var warn_hbox := HBoxContainer.new()
-	warn_hbox.add_theme_constant_override("separation", 10)
-	warn_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-
-	_warning_icon = Label.new()
-	_warning_icon.text = "⚠️"
-	_warning_icon.add_theme_font_size_override("font_size", 28)
-	warn_hbox.add_child(_warning_icon)
-
-	var warn_vbox := VBoxContainer.new()
-	warn_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-
-	_warning_title_lbl = Label.new()
-	_warning_title_lbl.text = "SEL UYARISI!"
-	_warning_title_lbl.add_theme_font_size_override("font_size", 16)
-	_warning_title_lbl.add_theme_color_override("font_color", Color(1.0, 0.25, 0.25))
-
-	_warning_subtitle_lbl = Label.new()
-	_warning_subtitle_lbl.text = "Kalan Süre: 00:06"
-	_warning_subtitle_lbl.add_theme_font_size_override("font_size", 13)
-	_warning_subtitle_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.85))
-
-	_warning_status_lbl = Label.new()
-	_warning_status_lbl.text = "Taşkın Yaklaşıyor!"
-	_warning_status_lbl.add_theme_font_size_override("font_size", 11)
-	_warning_status_lbl.add_theme_color_override("font_color", Color(1.0, 0.6, 0.6))
-
-	warn_vbox.add_child(_warning_title_lbl)
-	warn_vbox.add_child(_warning_subtitle_lbl)
-	warn_vbox.add_child(_warning_status_lbl)
-	warn_hbox.add_child(warn_vbox)
-
-	_warning_panel.add_child(warn_hbox)
-	_flood_ui_layer.add_child(_warning_panel)
+	var grad_tex := GradientTexture2D.new()
+	grad_tex.gradient = grad
+	grad_tex.fill_from = Vector2(0.0, 0.5)
+	grad_tex.fill_to = Vector2(1.0, 0.5)
+	grad_tex.width = 64
+	grad_tex.height = 32
+	_warning_gradient_rect.texture = grad_tex
+	_flood_ui_layer.add_child(_warning_gradient_rect)
 
 	# 2. Üst Ortada Beliren Sel Savuşturma ve Çarpan Para Ödülü Paneli
 	_reward_panel = PanelContainer.new()
@@ -1082,43 +1126,35 @@ func _setup_flood_ui() -> void:
 
 
 func _show_warning_ui(is_urgent: bool) -> void:
-	if not _warning_panel:
-		return
+	if not _flood_ui_layer:
+		_setup_flood_ui()
 	_is_urgent_warning = is_urgent
 	_is_warning_flashing = true
-	_warning_panel.visible = true
-	_warning_panel.pivot_offset = _warning_panel.size * 0.5
+	_warning_flash_timer = 0.0
+
+	# Sağ taraftaki ince kırmızı çizgi uyarısını yumuşakça aç
+	if _warning_gradient_rect:
+		_warning_gradient_rect.offset_left = -warning_line_width
+		_warning_gradient_rect.visible = true
+		_warning_gradient_rect.modulate.a = 0.0
+		var tw := create_tween()
+		tw.tween_property(_warning_gradient_rect, "modulate:a", 1.0, 0.25)
 
 
-func _update_warning_ui(time_left: float, is_rain_phase: bool = false, _phase_tag: String = "") -> void:
-	if not _warning_panel or not _warning_panel.visible:
-		return
-	if _warning_icon:
-		_warning_icon.text = "⚠️"
-	_warning_title_lbl.text = "SEL UYARISI!"
-	_warning_title_lbl.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2))
-
-	var sec := int(ceil(time_left))
-	_warning_subtitle_lbl.text = "Kalan Süre: 00:%02d" % sec
-	_warning_subtitle_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.85))
-
-	if is_rain_phase:
-		if _total_waves_in_current_tsunami > 1:
-			_warning_status_lbl.text = "Tsunami Yaklaşıyor! (%d Dalga Geliyor!)" % _total_waves_in_current_tsunami
-		else:
-			_warning_status_lbl.text = "Tsunami Yaklaşıyor!"
-		_warning_status_lbl.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5))
-	else:
-		_warning_status_lbl.text = "Taşkın Yaklaşıyor!"
-		_warning_status_lbl.add_theme_color_override("font_color", Color(1.0, 0.6, 0.6))
+func _update_warning_ui(_time_left: float, _is_rain_phase: bool = false, _phase_tag: String = "") -> void:
+	# Uyarı kutuları kaldırıldığı için metin güncellemesine gerek yok
+	pass
 
 
 func _hide_warning_ui() -> void:
 	_is_warning_flashing = false
-	if _warning_panel:
-		_warning_panel.visible = false
-		_warning_panel.modulate.a = 1.0
-		_warning_panel.scale = Vector2.ONE
+	if _warning_gradient_rect and _warning_gradient_rect.visible:
+		var tw := create_tween()
+		tw.tween_property(_warning_gradient_rect, "modulate:a", 0.0, 0.25)
+		tw.tween_callback(func():
+			if is_instance_valid(_warning_gradient_rect) and not _is_warning_flashing:
+				_warning_gradient_rect.visible = false
+		)
 
 
 func _show_reward_ui(standing_houses: int, multiplier: int, earned_money: int) -> void:
@@ -1237,11 +1273,21 @@ func _play_tsunami_alarm() -> void:
 	if _alarm_player and _alarm_player.stream:
 		_alarm_player.volume_db = tsunami_alarm_volume_db
 		_alarm_player.play()
+	set_water_pushboxes_enabled(true)
 
 
 func _stop_tsunami_alarm() -> void:
 	if _alarm_player and _alarm_player.playing:
 		_alarm_player.stop()
+	set_water_pushboxes_enabled(false)
+
+
+func set_water_pushboxes_enabled(active: bool) -> void:
+	var pushboxes := get_tree().get_nodes_in_group("water_pushbox")
+	for pb in pushboxes:
+		if is_instance_valid(pb) and "enabled" in pb:
+			pb.enabled = active
+	print("[Game] Tsunami Su İtme Kutuları (PushBox) %s yapıldı. (Adet: %d)" % ["AKTİF EDİLDİ" if active else "KAPATILDI", pushboxes.size()])
 
 
 func _play_tsunami_end_alarm() -> void:

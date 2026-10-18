@@ -80,18 +80,20 @@ class_name CraneController
 ## Standard trolley traverse speed (px/s) for Tier 1
 @export var trolley_speed_tier1: float = 380.0
 ## Standard winch deploy/retract speed (px/s) for Tier 1
-@export var rope_winch_speed_tier1: float = 260.0
-## Upgraded agile trolley traverse speed (px/s) for Tier 2
-@export var trolley_speed_tier2: float = 580.0
-## Upgraded fast winch deploy/retract speed (px/s) for Tier 2
-@export var rope_winch_speed_tier2: float = 480.0
+@export var rope_winch_speed_tier1: float = 1000.0
+## Upgraded agile trolley traverse speed (px/s) for Tier 2 (active when payload deployed)
+@export var trolley_speed_tier2: float = 430.0
+## Upgraded fast winch deploy speed (px/s) for Tier 2 (responsive descent)
+@export var rope_winch_speed_tier2: float = 1500.0
+## Upgraded thruster-powered ascent speed (px/s) for Tier 2 (fast retrieval lift)
+@export var rope_winch_ascent_speed_tier2: float = 440.0
 ## Fling speed multiplier when releasing cargo from swing (Tier 1 vs Tier 2)
 @export var fling_multiplier_tier1: float = 2.0
-@export var fling_multiplier_tier2: float = 2.6
+@export var fling_multiplier_tier2: float = 2.4
 
 @export_group("Event Rock Temporary Speed Boost")
-## Duration in seconds of the speed boost when an Event Rock is consumed (Default: 15.0s)
-@export var event_boost_duration: float = 15.0
+## Duration in seconds of the speed boost when an Event Rock is consumed (Default: 20.0s)
+@export var event_boost_duration: float = 20.0
 var is_event_boost_active: bool = false
 var _event_boost_timer: float = 0.0
 
@@ -336,6 +338,35 @@ func _find_trolley_sprite() -> AnimatedSprite2D:
 	return null
 
 
+func _get_trolley_anim_name(anim_type: String) -> StringName:
+	if is_event_boost_active:
+		if anim_type == "move":
+			if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("move_better"):
+				return &"move_better"
+		elif anim_type == "default":
+			if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default_better"):
+				return &"default_better"
+	return StringName(anim_type)
+
+
+func _play_trolley_animation(anim_type: String) -> void:
+	if not trolley_sprite or not trolley_sprite.sprite_frames:
+		return
+	var target_anim: StringName = _get_trolley_anim_name(anim_type)
+	if not trolley_sprite.sprite_frames.has_animation(target_anim):
+		if trolley_sprite.sprite_frames.has_animation(StringName(anim_type)):
+			target_anim = StringName(anim_type)
+		else:
+			return
+
+	if anim_type == "move":
+		if trolley_sprite.animation != target_anim or not trolley_sprite.is_playing():
+			trolley_sprite.play(target_anim)
+	else:
+		if trolley_sprite.animation != target_anim:
+			trolley_sprite.play(target_anim)
+
+
 func _get_rope_origin() -> Vector2:
 	if trolley_pivot:
 		return trolley_pivot.global_position + Vector2(0.0, rope_offset_y)
@@ -441,9 +472,7 @@ func _ready() -> void:
 			crane_body_sprite.play("default")
 
 	# Crane trolley AnimatedSprite2D default animation
-	if trolley_sprite:
-		if trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
-			trolley_sprite.play("default")
+	_play_trolley_animation("default")
 
 	# Initialize Arrow state: visible only when at the top
 	if arrow:
@@ -481,8 +510,12 @@ func _physics_process(delta: float) -> void:
 	if is_event_boost_active:
 		_event_boost_timer -= delta
 		if _rocket_visual:
-			_rocket_visual.set_firing(true)
-			_rocket_visual.flame_scale = 1.45 if (is_descending or trolley_velocity.length() > 60.0) else 1.0
+			# Roket mekaniği ve alevler sadece kanca kullanıldığı (aşağıda/havada olduğu) zaman aktif olur
+			if not is_at_top:
+				_rocket_visual.set_firing(true)
+				_rocket_visual.flame_scale = 1.55 if (target_rope_length < current_rope_length) else 1.25
+			else:
+				_rocket_visual.set_firing(false)
 
 		if _event_boost_timer <= 0.0:
 			_end_event_boost()
@@ -591,17 +624,24 @@ func _handle_trolley_movement(delta: float) -> void:
 	if not is_at_top and lock_trolley_during_descent:
 		trolley_current_speed = 0.0
 		trolley_velocity = Vector2.ZERO
-		if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
-			if trolley_sprite.animation != &"default":
-				trolley_sprite.play("default")
+		_play_trolley_animation("default")
 		_stop_trolley_move_sound()
 		return
 
 	var input_x: float = _get_horizontal_input()
-	var target_speed: float = input_x * float(facing_direction) * trolley_speed
 
-	var active_accel: float = trolley_accel_boosted if (is_event_boost_active or payload_tier >= 2) else trolley_acceleration
-	var active_decel: float = trolley_decel_boosted if (is_event_boost_active or payload_tier >= 2) else trolley_deceleration
+	# Top (en üst) konumundayken kanca her zaman kontrollü standart hızda hareket eder.
+	# Hızlı roket trolley hareketi sadece kanca aşağıdayken / kullanılırken devreye girer.
+	var effective_trolley_speed: float = trolley_speed_tier1
+	var active_accel: float = trolley_acceleration
+	var active_decel: float = trolley_deceleration
+
+	if not is_at_top and (is_event_boost_active or payload_tier >= 2):
+		effective_trolley_speed = trolley_speed_tier2
+		active_accel = trolley_accel_boosted
+		active_decel = trolley_decel_boosted
+
+	var target_speed: float = input_x * float(facing_direction) * effective_trolley_speed
 
 	if absf(target_speed) > 0.001:
 		# Snappy reversal if driving opposite to current momentum
@@ -630,14 +670,10 @@ func _handle_trolley_movement(delta: float) -> void:
 	is_trolley_actually_moving = actually_moved
 
 	if actually_moved:
-		if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("move"):
-			if trolley_sprite.animation != &"move" or not trolley_sprite.is_playing():
-				trolley_sprite.play("move")
+		_play_trolley_animation("move")
 		_play_trolley_move_sound()
 	else:
-		if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
-			if trolley_sprite.animation != &"default":
-				trolley_sprite.play("default")
+		_play_trolley_animation("default")
 		_stop_trolley_move_sound()
 
 	_update_trolley_position()
@@ -690,30 +726,22 @@ func _update_swing_oscillation(delta: float) -> void:
 		# In Godot 2D coordinates (Y down, clockwise from DOWN is +angle/left):
 		# Accelerating right (trolley_accel_x > 0) creates positive angular acceleration (hook lags left).
 		# Braking while moving right (trolley_accel_x < 0) creates negative angular acceleration (hook flings forward/right).
-		var active_inertia_scale: float = swing_inertia_tier2 if (is_event_boost_active or payload_tier >= 2) else swing_inertia_tier1
+		var active_inertia_scale: float = swing_inertia_tier1
 		var inertial: float = (trolley_accel_x / eff_len) * cos(current_swing_angle) * active_inertia_scale
 
 		# 5. Continuous rotational whip torque during mast flip turn (opposite to turn direction)
 		var turn_whip: float = 0.0
 		if is_turning:
-			var whip_power: float = turn_whip_power_tier2 if (is_event_boost_active or payload_tier >= 2) else turn_whip_power_tier1
+			var whip_power: float = turn_whip_power_tier1
 			var whip_dir: float = float(_turn_direction) if not _is_turn_reversing else -float(_turn_direction) * 0.4
 			turn_whip = whip_dir * whip_power
 
-		# 6. Event Rock / Rocket Thruster Swing Boost ("fiziğe dayalı olsa bile biraz daha güç ve hız katabilmeli")
+		# 6. Event Rock / Rocket Thruster Swing Boost
+		# Roket itiş mekaniği sadece kanca atıldığı/kullanıldığı zaman çalışır.
+		# Top (en üst) konumundayken roket itişi sıfırdır; böylece nişan alma stabil ve kontrollüdür.
 		var rocket_swing_torque: float = 0.0
-		if is_event_boost_active or payload_tier >= 2:
-			var input_axis: float = _get_horizontal_input()
-			if input_axis != 0.0:
-				# Rocket thrusters apply active physical drive in the movement direction
-				rocket_swing_torque += input_axis * float(facing_direction) * rocket_swing_thrust
-			if absf(swing_angular_velocity) > 0.05:
-				# Tangential rocket thrust assist adding speed and punch to the swing
-				rocket_swing_torque += sign(swing_angular_velocity) * (rocket_swing_thrust * 0.45)
-
-			if _rocket_visual:
-				var speed_flame: float = clampf(absf(swing_angular_velocity) / 4.0, 0.0, 0.6)
-				_rocket_visual.flame_scale = 1.15 + speed_flame
+		if _rocket_visual:
+			_rocket_visual.set_firing(false)
 
 		# 7. Ambient gentle breeze variation
 		var ambient_wind: float = (sin(Time.get_ticks_msec() * 0.0016) * 0.08 + sin(Time.get_ticks_msec() * 0.0031) * 0.04)
@@ -722,13 +750,13 @@ func _update_swing_oscillation(delta: float) -> void:
 
 		# Semi-implicit Euler integration
 		swing_angular_velocity += total_angular_accel * delta
-		var max_ang_vel: float = 24.0 if (is_event_boost_active or payload_tier >= 2) else 18.0
+		var max_ang_vel: float = 18.0
 		swing_angular_velocity = clampf(swing_angular_velocity, -max_ang_vel, max_ang_vel)
 
 		current_swing_angle += swing_angular_velocity * delta
 
-		# Maximum allowed swing angle limit
-		var active_max_angle: float = 88.0 if is_turning else (event_boost_max_angle_deg if (is_event_boost_active or payload_tier >= 2) else swing_max_angle_deg)
+		# Maximum allowed swing angle limit (Top konumunda kontrollü 52 derece limit)
+		var active_max_angle: float = 88.0 if is_turning else swing_max_angle_deg
 		var max_rad: float = deg_to_rad(active_max_angle)
 		if absf(current_swing_angle) > max_rad:
 			current_swing_angle = clampf(current_swing_angle, -max_rad, max_rad)
@@ -981,10 +1009,20 @@ func _update_deployed_trajectory(delta: float) -> void:
 	if (is_carrying_cargo or is_carrying_water) and target_rope_length > current_rope_length:
 		target_rope_length = current_rope_length
 
-	# Winch extension/retraction calculation
+	# Winch extension/retraction calculation with tuned rocket speeds
 	var prev_len: float = current_rope_length
+	var effective_winch_speed: float = rope_winch_speed_tier1
+	if is_event_boost_active or payload_tier >= 2:
+		if target_rope_length < current_rope_length:
+			effective_winch_speed = rope_winch_ascent_speed_tier2 # 440 px/s fast thruster-powered retrieval
+		else:
+			effective_winch_speed = rope_winch_speed_tier2# 340 px/s fast and completely controllable descent
+
 	if current_rope_length != target_rope_length:
-		current_rope_length = move_toward(current_rope_length, target_rope_length, rope_winch_speed * delta)
+		if payload_tier >= 2:
+			current_rope_length = move_toward(current_rope_length, target_rope_length, effective_winch_speed * delta * 10)
+		else:
+			current_rope_length = move_toward(current_rope_length, target_rope_length, effective_winch_speed * delta * 2)
 	var winch_rate: float = (current_rope_length - prev_len) / maxf(delta, 0.001)
 
 	# Update payload level tracking (TOP, MIDDLE, BOTTOM)
@@ -1021,35 +1059,37 @@ func _update_deployed_trajectory(delta: float) -> void:
 	if delta > 0.0:
 		var trolley_accel_x: float = (trolley_velocity.x - prev_trolley_velocity.x) / delta
 		trolley_accel_x = clampf(trolley_accel_x, -1200.0, 1200.0)
-		var inertia_scale: float = 0.65 if (payload_tier == 1 and not is_event_boost_active) else 0.95
+		var inertia_scale: float = 0.65 if (payload_tier == 1 and not is_event_boost_active) else 0.85
 		total_deployed_accel += (trolley_accel_x / eff_len) * cos(current_swing_angle) * inertia_scale
 
 	if is_event_boost_active or payload_tier >= 2:
 		# Tier 2 / Boosted: ROCKET-POWERED GUIDED HOOK
 		if _rocket_visual:
 			_rocket_visual.set_firing(true)
-			_rocket_visual.flame_scale = 1.45 if (is_descending or trolley_velocity.length() > 60.0) else 1.0
+			_rocket_visual.flame_scale = 1.6 if (target_rope_length < current_rope_length) else 1.25
 
-		# 1. Rocket Guidance towards target if locked or nearby
-		if locked_target_node and is_instance_valid(locked_target_node):
-			var to_target: Vector2 = locked_target_node.global_position - _get_rope_origin()
-			var target_angle: float = Vector2.DOWN.angle_to(to_target)
-			var angle_err: float = target_angle - current_swing_angle
-			var rocket_thrust: float = clampf(angle_err * 14.0 - swing_angular_velocity * 2.8, -9.0, 9.0)
-			total_deployed_accel += rocket_thrust
-		else:
-			# Auto-homing scan for any nearby grabbable rock or stone wall
-			var soft_target = _check_target_lockon(Vector2.DOWN.rotated(current_swing_angle))
-			if soft_target and is_instance_valid(soft_target):
-				var to_t: Vector2 = soft_target.global_position - _get_rope_origin()
-				var t_angle: float = Vector2.DOWN.angle_to(to_t)
-				var a_err: float = t_angle - current_swing_angle
-				total_deployed_accel += clampf(a_err * 10.0, -7.0, 7.0)
-
-		# 2. Mid-air manual rocket steering with A/D keys
+		# 1. Manual rocket steering with A/D keys (smooth, responsive, high authority)
 		var steer_input: float = _get_horizontal_input()
 		if steer_input != 0.0:
-			total_deployed_accel += - steer_input * 5.5
+			var steer_torque: float = - steer_input * 7.5
+			steer_torque -= swing_angular_velocity * 1.5 # Damping prevents wobble/overshoot
+			total_deployed_accel += steer_torque
+		else:
+			# 2. Smooth gentle magnetic homing towards target if player is not actively steering
+			if locked_target_node and is_instance_valid(locked_target_node):
+				var to_target: Vector2 = locked_target_node.global_position - _get_rope_origin()
+				var target_angle: float = Vector2.DOWN.angle_to(to_target)
+				var angle_err: float = target_angle - current_swing_angle
+				var rocket_thrust: float = clampf(angle_err * 6.0 - swing_angular_velocity * 2.2, -5.0, 5.0)
+				total_deployed_accel += rocket_thrust
+			else:
+				# Auto-homing scan for any nearby grabbable rock or stone wall
+				var soft_target = _check_target_lockon(Vector2.DOWN.rotated(current_swing_angle))
+				if soft_target and is_instance_valid(soft_target):
+					var to_t: Vector2 = soft_target.global_position - _get_rope_origin()
+					var t_angle: float = Vector2.DOWN.angle_to(to_t)
+					var a_err: float = t_angle - current_swing_angle
+					total_deployed_accel += clampf(a_err * 4.5 - swing_angular_velocity * 1.5, -3.8, 3.8)
 	else:
 		if _rocket_visual:
 			_rocket_visual.set_firing(false)
@@ -1058,16 +1098,14 @@ func _update_deployed_trajectory(delta: float) -> void:
 	swing_angular_velocity += total_deployed_accel * delta
 	var max_deployed_ang_vel: float = clampf(420.0 / eff_len, 0.85, 3.2)
 	if is_event_boost_active or payload_tier >= 2:
-		max_deployed_ang_vel *= 1.35
+		max_deployed_ang_vel *= 1.15
 	swing_angular_velocity = clampf(swing_angular_velocity, -max_deployed_ang_vel, max_deployed_ang_vel)
 
 	current_swing_angle += swing_angular_velocity * delta
 
 	# Max swing angle scales with cable length: tighter at bottom so long cable doesn't sweep across the entire screen
-	var base_max_angle: float = swing_max_angle_deg if (payload_tier == 1 and not is_event_boost_active) else event_boost_max_angle_deg
-	var max_allowed_deg: float = lerpf(base_max_angle, 20.0, length_ratio)
-	if is_event_boost_active or payload_tier >= 2:
-		max_allowed_deg = lerpf(base_max_angle, 30.0, length_ratio)
+	var base_max_angle: float = swing_max_angle_deg if (payload_tier == 1 and not is_event_boost_active) else 60.0
+	var max_allowed_deg: float = lerpf(base_max_angle, 22.0, length_ratio)
 	var max_rad: float = deg_to_rad(max_allowed_deg)
 
 	if absf(current_swing_angle) > max_rad:
@@ -1100,7 +1138,7 @@ func _update_deployed_trajectory(delta: float) -> void:
 		is_descending = false
 		has_resolved_landing = false
 		current_payload_level = PayloadLevel.TOP
-		if not is_event_boost_active and _rocket_visual:
+		if _rocket_visual:
 			_rocket_visual.set_firing(false)
 		if arrow:
 			arrow.visible = true
@@ -1898,13 +1936,19 @@ func _is_touching_grabbable_object() -> bool:
 			if b.is_in_group("cargo") or b.is_in_group("grabbable"):
 				return true
 
-	# 2. Proximity check to CargoCrate or grabbable objects in scene
+	# 2. Proximity check with expanded reach for powerful rocket claws
+	var is_rocket: bool = is_event_boost_active or payload_tier >= 2
+	var reach_x: float = 95.0 if is_rocket else 60.0
+	var reach_y_min: float = -35.0 if is_rocket else -20.0
+	var reach_y_max: float = 110.0 if is_rocket else 85.0
+	var pit_reach_x: float = 110.0 if is_rocket else 80.0
+
 	var root_node: Node = get_parent()
 	if root_node:
 		var crate: RigidBody2D = root_node.get_node_or_null("CargoCrate") as RigidBody2D
 		if crate and crate != grabbed_body:
 			var diff: Vector2 = crate.global_position - payload.global_position
-			if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+			if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 				return true
 
 	if is_inside_tree():
@@ -1913,22 +1957,22 @@ func _is_touching_grabbable_object() -> bool:
 			var pit = tree.get_first_node_in_group("rock_pit")
 			if pit and is_instance_valid(pit):
 				var diff: Vector2 = pit.global_position - payload.global_position
-				if absf(diff.x) <= 80.0 and diff.y >= -50.0 and diff.y <= 65.0:
+				if absf(diff.x) <= pit_reach_x and diff.y >= -50.0 and diff.y <= 65.0:
 					return true
 			for node in tree.get_nodes_in_group("event_rock"):
 				if node is Node2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
-					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+					if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 						return true
 			for node in tree.get_nodes_in_group("upgrade_rock"):
 				if node is Node2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
-					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+					if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 						return true
 			for node in tree.get_nodes_in_group("cargo"):
 				if node is Node2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
-					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+					if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 						return true
 
 	return false
@@ -1941,12 +1985,19 @@ func _find_touching_grabbable_body() -> RigidBody2D:
 		for b in payload.get_colliding_bodies():
 			if b is RigidBody2D and b != payload:
 				return b
+
+	var is_rocket: bool = is_event_boost_active or payload_tier >= 2
+	var reach_x: float = 95.0 if is_rocket else 60.0
+	var reach_y_min: float = -35.0 if is_rocket else -20.0
+	var reach_y_max: float = 110.0 if is_rocket else 85.0
+	var pit_reach_x: float = 110.0 if is_rocket else 80.0
+
 	var root_node: Node = get_parent()
 	if root_node:
 		var crate: RigidBody2D = root_node.get_node_or_null("CargoCrate") as RigidBody2D
 		if crate:
 			var diff: Vector2 = crate.global_position - payload.global_position
-			if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+			if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 				return crate
 	if is_inside_tree():
 		var tree := get_tree()
@@ -1954,39 +2005,39 @@ func _find_touching_grabbable_body() -> RigidBody2D:
 			var pit = tree.get_first_node_in_group("rock_pit")
 			if pit and is_instance_valid(pit) and pit.has_method("dispense_rock_to_crane"):
 				var diff: Vector2 = pit.global_position - payload.global_position
-				if absf(diff.x) <= 80.0 and diff.y >= -50.0 and diff.y <= 65.0:
+				if absf(diff.x) <= pit_reach_x and diff.y >= -50.0 and diff.y <= 65.0:
 					var mined_rock: RigidBody2D = pit.dispense_rock_to_crane(self)
 					if mined_rock:
 						return mined_rock
 			for node in tree.get_nodes_in_group("event_rock"):
 				if node is RigidBody2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
-					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+					if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 						return node
 			for node in tree.get_nodes_in_group("upgrade_rock"):
 				if node is RigidBody2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
-					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+					if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 						return node
 			for node in tree.get_nodes_in_group("brick"):
 				if node is RigidBody2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
-					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+					if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 						return node
 			for node in tree.get_nodes_in_group("rock"):
 				if node is RigidBody2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
-					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+					if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 						return node
 			for node in tree.get_nodes_in_group("cargo"):
 				if node is RigidBody2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
-					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+					if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 						return node
 			for node in tree.get_nodes_in_group("grabbable"):
 				if node is RigidBody2D and node != payload and node != grabbed_body:
 					var diff: Vector2 = node.global_position - payload.global_position
-					if absf(diff.x) <= 60.0 and diff.y >= -20.0 and diff.y <= 85.0:
+					if absf(diff.x) <= reach_x and diff.y >= reach_y_min and diff.y <= reach_y_max:
 						return node
 	return null
 
@@ -2090,15 +2141,13 @@ func _start_turn() -> void:
 		var current_offset: float = trolley_pivot.position.x - mast_local_x
 		var target_x: float = mast_local_x - current_offset
 
-		if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("move"):
-			trolley_sprite.play("move")
+		_play_trolley_animation("move")
 
 		_trolley_tween = create_tween()
 		_trolley_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		_trolley_tween.tween_property(trolley_pivot, "position:x", target_x, 0.38)
 		_trolley_tween.tween_callback(func():
-			if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
-				trolley_sprite.play("default")
+			_play_trolley_animation("default")
 		)
 
 	# 1. Play crane body turn animation forward
@@ -2164,8 +2213,7 @@ func _complete_turn() -> void:
 	if crane_body_sprite and crane_body_sprite.sprite_frames and crane_body_sprite.sprite_frames.has_animation("default"):
 		crane_body_sprite.play("default")
 
-	if trolley_sprite and trolley_sprite.sprite_frames and trolley_sprite.sprite_frames.has_animation("default"):
-		trolley_sprite.play("default")
+	_play_trolley_animation("default")
 
 
 func _apply_flip_state(dir_x: float) -> void:
@@ -2417,12 +2465,14 @@ func set_payload_tier(tier: int) -> void:
 	if payload_tier == 2 or is_event_boost_active:
 		trolley_speed = trolley_speed_tier2
 		rope_winch_speed = rope_winch_speed_tier2
-		swing_max_angle_deg = event_boost_max_angle_deg
-		pendulum_gravity = 800.0
-		pendulum_damping = 0.95
-		swing_inertia_scale = swing_inertia_tier2
-		turn_swing_kick = turn_swing_kick_tier2
-		print("[Crane] Payload Tier 2 / Event Boost Aktif! (Trolley: ", trolley_speed, "px/s, Winch: ", rope_winch_speed, "px/s, Turn Kick: ", turn_swing_kick, ").")
+		swing_max_angle_deg = 52.0 # Top konumunda her zaman dengeli ve sabit 52 derece
+		pendulum_gravity = 840.0
+		pendulum_damping = 1.05
+		swing_inertia_scale = swing_inertia_tier1
+		turn_swing_kick = turn_swing_kick_tier1
+		if _rocket_visual:
+			_rocket_visual.set_firing(not is_at_top)
+		print("[Crane] Payload Tier 2 / Event Boost Aktif! (Trolley Deployed: ", trolley_speed, "px/s, Winch İniş: ", rope_winch_speed, "px/s, Çıkış: ", rope_winch_ascent_speed_tier2, "px/s).")
 	else:
 		trolley_speed = trolley_speed_tier1
 		rope_winch_speed = rope_winch_speed_tier1
@@ -2433,7 +2483,7 @@ func set_payload_tier(tier: int) -> void:
 		turn_swing_kick = turn_swing_kick_tier1
 		if _rocket_visual:
 			_rocket_visual.set_firing(false)
-		print("[Crane] Payload Tier 1 Standart (Trolley: ", trolley_speed, "px/s, Winch: ", rope_winch_speed, "px/s, Turn Kick: ", turn_swing_kick, ").")
+		print("[Crane] Payload Tier 1 Standart (Trolley: ", trolley_speed, "px/s, Winch: ", rope_winch_speed, "px/s).")
 
 
 func trigger_event_boost(duration: float = -1.0) -> void:
@@ -2442,21 +2492,34 @@ func trigger_event_boost(duration: float = -1.0) -> void:
 	_event_boost_timer = boost_time
 	set_payload_tier(2)
 
+	# Trolley animasyonunu derhal event rock moduna (default_better / move_better) geçir
+	if is_trolley_actually_moving:
+		_play_trolley_animation("move")
+	else:
+		_play_trolley_animation("default")
+
 	if payload_sprite and payload_sprite.sprite_frames and payload_sprite.sprite_frames.has_animation("better_catch"):
 		payload_sprite.play("better_catch")
 
+	# Top konumundayken roket alevleri kapalıdır; kanca atıldığında ateşlenir
 	if _rocket_visual:
-		_rocket_visual.set_firing(true)
+		_rocket_visual.set_firing(not is_at_top)
 		_rocket_visual.flame_scale = 1.35
 
 	_play_event_boost_pickup_effect()
-	print("[Crane] ★ EVENT ROCK BOOST AKTİF! ", boost_time, " saniye boyunca yüksek güçlü roket fiziği ve hızlandırma devrede.")
+	print("[Crane] ★ EVENT ROCK BOOST AKTİF! ", boost_time, " saniye. (Trolley animasyonları: default_better / move_better).")
 
 
 func _end_event_boost() -> void:
 	is_event_boost_active = false
 	_event_boost_timer = 0.0
 	set_payload_tier(1)
+
+	# Trolley animasyonunu derhal standart moda (default / move) geri döndür
+	if is_trolley_actually_moving:
+		_play_trolley_animation("move")
+	else:
+		_play_trolley_animation("default")
 
 	if _rocket_visual:
 		_rocket_visual.set_firing(false)
@@ -2469,7 +2532,7 @@ func _end_event_boost() -> void:
 		elif payload_sprite.sprite_frames.has_animation("default"):
 			payload_sprite.play("default")
 
-	print("[Crane] Event Rock boost süresi tamamlandı. Standart fiziğe dönüldü.")
+	print("[Crane] Event Rock boost süresi tamamlandı. Trolley standart animasyonlara döndü.")
 
 
 func _play_event_boost_pickup_effect() -> void:
@@ -2504,6 +2567,8 @@ func _check_and_deposit_to_stone_wall() -> bool:
 		return false
 	var wall = tree.get_first_node_in_group("stone_wall")
 	if not wall or not is_instance_valid(wall) or (not wall.has_method("place_brick") and not wall.has_method("place_rock")):
+		return false
+	if "current_stage" in wall and "max_stages" in wall and wall.current_stage >= wall.max_stages:
 		return false
 
 	var wall_top_y_world: float = wall.global_position.y
